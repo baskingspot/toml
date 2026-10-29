@@ -102,7 +102,7 @@ stays valid after the parse returns. Declare it, pass a pointer, and read it on
 the error path:
 
 ```zig
-var diagnostics: toml.Diagnostics = undefined;
+var diagnostics: toml.Diagnostics = .{};
 var document = toml.parseFromSlice(gpa, source, .{
     .diagnostics = &diagnostics,
 }) catch |err| switch (err) {
