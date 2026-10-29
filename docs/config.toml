@@ -20,3 +20,4 @@ dark_theme = "github-dark"
 [extra]
 repo = "baskingspot/toml"
 api = true
+third_party = true

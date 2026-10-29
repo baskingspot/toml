@@ -4,11 +4,10 @@ title = "toml"
 
 TOML 1.1.0 in Zig: a strict parser, a value tree, and a writer.
 
-Zig has no TOML parser in `std`. This one reads the whole of TOML 1.1.0 into a
-tree you can walk, and writes that tree back out as TOML. It rejects what the
-grammar rejects, including the cases a shortcut gets wrong: a table defined
-twice, a dotted key that reaches into a table its own header defined, and an
-inline table extended after its closing brace.
+Zig has no TOML parser in std. This one reads the whole of TOML 1.1.0 into a
+tree you can walk, and writes it back as TOML. It rejects what the grammar
+rejects: a table defined twice, a dotted key that reaches into a header's
+table, and an inline table extended after its brace.
 
 Reads 1.1, writes 1.0. The writer never emits the 1.1-only syntax, so any
 TOML 1.0 parser accepts its output: inline tables stay on one line, `\e` is
@@ -290,7 +289,8 @@ with these differences:
 
 - Comments, blank lines, and indentation are gone.
 - A table's own keys are written before its sub-tables, because a header opens
-  a new table and cannot be undone. The key order within each group is kept.
+  a new table and cannot be undone, so the order across those two groups
+  changes. Within each group, the order is the document's.
 - Strings are written as single-line basic strings, with control characters
   escaped as `\u00XX`. `\e` becomes `\u001b`, and `\xHH` becomes the
   codepoint in UTF-8, so neither 1.1 escape appears in the output.
@@ -327,8 +327,8 @@ The invalid half is where the parser earns its keep. It includes:
   with no key before or after it.
 - Strings: raw control characters, bad escapes, unclosed delimiters, a
   multi-line string used as a key.
-- Numbers: leading zeros, misplaced underscores, a value like `1.2.3`, an
-  integer past `i64`.
+- Numbers: leading zeros, `1_` and `_1`, `1.2.3`, and an integer past
+  `i64`.
 - Datetimes: out-of-range fields, February 30, a year with five digits, an
   offset of `+25:00`.
 - Encoding: invalid UTF-8, UTF-16 input, and a byte-order mark past the start
