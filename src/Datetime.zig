@@ -10,6 +10,8 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const testing = std.testing;
+const Io = std.Io;
+const time = std.time;
 
 const Datetime = @This();
 
@@ -66,17 +68,17 @@ pub fn scan(text: []const u8) Error!?Scanned {
         const date = try scanDate(text);
         if (date.len < text.len and isTimeDelimiter(text[date.len])) {
             if (date.len + 1 < text.len and isDigit(text[date.len + 1])) {
-                const time = try scanTime(text[date.len + 1 ..]);
-                const used = date.len + 1 + time.len;
+                const t = try scanTime(text[date.len + 1 ..]);
+                const used = date.len + 1 + t.len;
                 var value: Datetime = .{
                     .kind = .local_datetime,
                     .year = date.year,
                     .month = date.month,
                     .day = date.day,
-                    .hour = time.hour,
-                    .minute = time.minute,
-                    .second = time.second,
-                    .nanosecond = time.nanosecond,
+                    .hour = t.hour,
+                    .minute = t.minute,
+                    .second = t.second,
+                    .nanosecond = t.nanosecond,
                 };
                 if (used < text.len) {
                     switch (text[used]) {
@@ -105,14 +107,14 @@ pub fn scan(text: []const u8) Error!?Scanned {
     }
 
     if (startsTime(text)) {
-        const time = try scanTime(text);
+        const t = try scanTime(text);
         return .{ .value = .{
             .kind = .local_time,
-            .hour = time.hour,
-            .minute = time.minute,
-            .second = time.second,
-            .nanosecond = time.nanosecond,
-        }, .len = time.len };
+            .hour = t.hour,
+            .minute = t.minute,
+            .second = t.second,
+            .nanosecond = t.nanosecond,
+        }, .len = t.len };
     }
 
     return null;
@@ -126,7 +128,7 @@ pub fn parse(text: []const u8) Error!Datetime {
 }
 
 /// Write the datetime the way TOML spells it.
-pub fn write(self: Datetime, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+pub fn write(self: Datetime, writer: *Io.Writer) Io.Writer.Error!void {
     switch (self.kind) {
         .offset, .local_datetime, .local_date => try writer.print(
             "{d:0>4}-{d:0>2}-{d:0>2}",
@@ -145,7 +147,7 @@ pub fn write(self: Datetime, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     );
 
     if (self.nanosecond != 0) {
-        assert(self.nanosecond < std.time.ns_per_s);
+        assert(self.nanosecond < time.ns_per_s);
         var digits: [9]u8 = undefined;
         var value = self.nanosecond;
         var at: usize = digits.len;
@@ -295,8 +297,8 @@ fn isDigit(c: u8) bool {
 }
 
 fn daysInMonth(year: u16, month: u8) u8 {
-    const named: std.time.epoch.Month = @enumFromInt(month);
-    return @intCast(std.time.epoch.getDaysInMonth(year, named));
+    const named: time.epoch.Month = @enumFromInt(month);
+    return @intCast(time.epoch.getDaysInMonth(year, named));
 }
 
 test "scan reads the four forms" {
@@ -314,10 +316,10 @@ test "scan reads the four forms" {
     try testing.expectEqual(Kind.local_date, date.value.kind);
     try testing.expectEqual(@as(usize, 10), date.len);
 
-    const time = (try scan("00:32:00.5")).?;
-    try testing.expectEqual(Kind.local_time, time.value.kind);
-    try testing.expectEqual(@as(u32, 500_000_000), time.value.nanosecond);
-    try testing.expectEqual(@as(usize, 10), time.len);
+    const t = (try scan("00:32:00.5")).?;
+    try testing.expectEqual(Kind.local_time, t.value.kind);
+    try testing.expectEqual(@as(u32, 500_000_000), t.value.nanosecond);
+    try testing.expectEqual(@as(usize, 10), t.len);
 
     // TOML 1.1: the seconds may be omitted, and count as zero.
     const minute_only = (try scan("07:32")).?;
@@ -386,7 +388,7 @@ test "write normalizes spelling and keeps the meaning" {
     for (cases) |case| {
         const value = try parse(case.input);
         var buffer: [64]u8 = undefined;
-        var writer: std.Io.Writer = .fixed(&buffer);
+        var writer: Io.Writer = .fixed(&buffer);
         try value.write(&writer);
         try testing.expectEqualStrings(case.output, writer.buffered());
     }

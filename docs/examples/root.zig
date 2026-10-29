@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const testing = std.testing;
+
 const toml = @import("toml");
 
 const source =
@@ -52,15 +53,7 @@ test "the leaky variant uses the caller's arena" {
 }
 
 fn describe(value: toml.Value) []const u8 {
-    return switch (value) {
-        .string => "string",
-        .integer => "integer",
-        .float => "float",
-        .boolean => "boolean",
-        .datetime => "datetime",
-        .array => "array",
-        .table => "table",
-    };
+    return @tagName(std.meta.activeTag(value));
 }
 
 test "read a value by its tag" {

@@ -2,26 +2,30 @@
 
 const std = @import("std");
 const testing = std.testing;
+const Io = std.Io;
+const math = std.math;
+const mem = std.mem;
+const ArenaAllocator = std.heap.ArenaAllocator;
 
-const Value = @import("value.zig").Value;
-const Table = @import("value.zig").Table;
 const Array = @import("value.zig").Array;
+const Table = @import("value.zig").Table;
+const Value = @import("value.zig").Value;
 
 const Writer = @This();
 
-pub const Error = std.Io.Writer.Error || error{ NotATable, NestingTooDeep };
+pub const Error = Io.Writer.Error || error{ NotATable, NestingTooDeep };
 
 /// The deepest table path the writer emits. The parser's key limit keeps a
 /// parsed tree under this, so only a hand-built tree can hit it.
 const max_path = 128;
 
-writer: *std.Io.Writer,
+writer: *Io.Writer,
 path: [max_path][]const u8 = undefined,
 depth: u32 = 0,
 /// Whether anything was written, so a header knows to put a blank line first.
 wrote: bool = false,
 
-pub fn init(writer: *std.Io.Writer) Writer {
+pub fn init(writer: *Io.Writer) Writer {
     return .{ .writer = writer };
 }
 
@@ -89,15 +93,15 @@ fn writePath(self: *Writer) Error!void {
 }
 
 fn writeValue(self: *Writer, value: Value) Error!void {
-    switch (value) {
-        .string => |text| try self.writeString(text),
-        .integer => |number| try self.writer.print("{d}", .{number}),
-        .float => |number| try self.writeFloat(number),
-        .boolean => |flag| try self.writer.writeAll(if (flag) "true" else "false"),
-        .datetime => |datetime| try datetime.write(self.writer),
-        .array => |array| try self.writeArray(array),
-        .table => |table| try self.writeInlineTable(table),
-    }
+    try switch (value) {
+        .string => |text| self.writeString(text),
+        .integer => |number| self.writer.print("{d}", .{number}),
+        .float => |number| self.writeFloat(number),
+        .boolean => |flag| self.writer.writeAll(if (flag) "true" else "false"),
+        .datetime => |datetime| datetime.write(self.writer),
+        .array => |array| self.writeArray(array),
+        .table => |table| self.writeInlineTable(table),
+    };
 }
 
 fn writeArray(self: *Writer, array: *Array) Error!void {
@@ -147,10 +151,10 @@ fn writeString(self: *Writer, text: []const u8) Error!void {
 }
 
 fn writeFloat(self: *Writer, number: f64) Error!void {
-    if (std.math.isNan(number)) {
-        return self.writer.writeAll(if (std.math.signbit(number)) "-nan" else "nan");
+    if (math.isNan(number)) {
+        return self.writer.writeAll(if (math.signbit(number)) "-nan" else "nan");
     }
-    if (std.math.isInf(number)) {
+    if (math.isInf(number)) {
         return self.writer.writeAll(if (number < 0) "-inf" else "inf");
     }
     // `{d}` prints the shortest decimal that reads back to the same bits, but
@@ -163,7 +167,7 @@ fn writeFloat(self: *Writer, number: f64) Error!void {
         return self.writer.print("{e}", .{number});
     };
     try self.writer.writeAll(text);
-    if (std.mem.findScalar(u8, text, '.') == null) try self.writer.writeAll(".0");
+    if (mem.findScalar(u8, text, '.') == null) try self.writer.writeAll(".0");
 }
 
 fn isValue(value: Value) bool {
@@ -186,7 +190,7 @@ fn isBareKey(key: []const u8) bool {
 }
 
 test "stringify writes values before sub-tables" {
-    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    var arena: ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
@@ -200,14 +204,14 @@ test "stringify writes values before sub-tables" {
     try root.put(a, "child", .{ .table = child });
 
     var buffer: [256]u8 = undefined;
-    var out: std.Io.Writer = .fixed(&buffer);
+    var out: Io.Writer = .fixed(&buffer);
     var writer: Writer = .init(&out);
     try writer.write(.{ .table = root });
     try testing.expectEqualStrings("top = true\n\n[child]\nx = 1\n", out.buffered());
 }
 
 test "stringify quotes keys that the bare form cannot carry" {
-    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    var arena: ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
@@ -219,7 +223,7 @@ test "stringify quotes keys that the bare form cannot carry" {
     try root.put(a, "é", .{ .integer = 4 });
 
     var buffer: [256]u8 = undefined;
-    var out: std.Io.Writer = .fixed(&buffer);
+    var out: Io.Writer = .fixed(&buffer);
     var writer: Writer = .init(&out);
     try writer.write(.{ .table = root });
     try testing.expectEqualStrings(
@@ -230,7 +234,7 @@ test "stringify quotes keys that the bare form cannot carry" {
 
 test "stringify refuses a value that is not a table" {
     var buffer: [16]u8 = undefined;
-    var out: std.Io.Writer = .fixed(&buffer);
+    var out: Io.Writer = .fixed(&buffer);
     var writer: Writer = .init(&out);
     try testing.expectError(error.NotATable, writer.write(.{ .integer = 1 }));
 }

@@ -7,13 +7,11 @@
 //! tree.
 
 const std = @import("std");
+const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
+const ArenaAllocator = std.heap.ArenaAllocator;
 
-/// A TOML value: a table, an array, a scalar, or a datetime.
-pub const Value = @import("value.zig").Value;
-/// A table, with its keys in the order the document declared them.
-pub const Table = @import("value.zig").Table;
 /// An array, with its elements in document order.
 pub const Array = @import("value.zig").Array;
 /// One of the four TOML datetime forms, down to the nanosecond.
@@ -23,8 +21,11 @@ pub const Datetime = @import("Datetime.zig");
 pub const Diagnostics = @import("Diagnostics.zig");
 /// Byte offsets into the source: the first offending byte and one past the last.
 pub const Span = Diagnostics.Span;
-
 const Parser = @import("Parser.zig");
+/// A table, with its keys in the order the document declared them.
+pub const Table = @import("value.zig").Table;
+/// A TOML value: a table, an array, a scalar, or a datetime.
+pub const Value = @import("value.zig").Value;
 const Writer = @import("Writer.zig");
 
 /// What a parse can return: the allocator failed, or the source breaks the
@@ -44,7 +45,7 @@ pub const Document = struct {
     /// The arena that owns every string, table, and array in `root`, when the
     /// document came from `parseFromSlice`. Null when it came from
     /// `parseFromSliceLeaky`, whose memory belongs to the caller.
-    arena: ?std.heap.ArenaAllocator = null,
+    arena: ?ArenaAllocator = null,
     /// The root table.
     root: Value,
 
@@ -67,7 +68,7 @@ pub fn parseFromSlice(
     source: []const u8,
     options: ParseOptions,
 ) ParseError!Document {
-    var arena: std.heap.ArenaAllocator = .init(allocator);
+    var arena: ArenaAllocator = .init(allocator);
     errdefer arena.deinit();
     var parser: Parser = .init(arena.allocator(), source, options.diagnostics);
     const root = try parser.parse();
@@ -92,7 +93,7 @@ pub fn parseFromSliceLeaky(
 
 /// What `stringify` can fail with: the sink, a value that is not a table, or
 /// a tree nested deeper than the writer walks.
-pub const StringifyError = std.Io.Writer.Error || error{ NotATable, NestingTooDeep };
+pub const StringifyError = Io.Writer.Error || error{ NotATable, NestingTooDeep };
 
 /// Write `value` as a TOML document.
 ///
@@ -101,7 +102,7 @@ pub const StringifyError = std.Io.Writer.Error || error{ NotATable, NestingTooDe
 /// written before its sub-tables, which is what keeps the output a valid
 /// document, so the order of a table's own keys relative to its sub-tables is
 /// not preserved.
-pub fn stringify(value: Value, writer: *std.Io.Writer) StringifyError!void {
+pub fn stringify(value: Value, writer: *Io.Writer) StringifyError!void {
     var out: Writer = .init(writer);
     try out.write(value);
 }
@@ -172,7 +173,7 @@ test "the document does not borrow the source" {
 }
 
 test "parseFromSliceLeaky writes into the caller's allocator" {
-    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    var arena: ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const document = try parseFromSliceLeaky(arena.allocator(), "a = 1\n", .{});
     try testing.expect(document.arena == null);
@@ -275,7 +276,7 @@ test "the writer emits TOML 1.0 for every 1.1 feature" {
     defer document.deinit();
 
     var buffer: [512]u8 = undefined;
-    var out: std.Io.Writer = .fixed(&buffer);
+    var out: Io.Writer = .fixed(&buffer);
     try stringify(document.root, &out);
 
     // No `\e`, no `\xHH`, seconds always present, and the inline table in
@@ -300,7 +301,7 @@ test "a number literal past the stack buffer still parses" {
 
 test "a key path deeper than the limit is a diagnostic" {
     var text: [256]u8 = undefined;
-    var out: std.Io.Writer = .fixed(&text);
+    var out: Io.Writer = .fixed(&text);
     try out.writeAll("a");
     for (0..32) |_| try out.writeAll(".a");
     try out.writeAll(" = 1\n");
@@ -337,7 +338,7 @@ fn fuzzParse(_: void, smith: *testing.Smith) anyerror!void {
     var first = parseFromSlice(testing.allocator, source, .{}) catch return;
     defer first.deinit();
 
-    var output: std.Io.Writer.Allocating = .init(testing.allocator);
+    var output: Io.Writer.Allocating = .init(testing.allocator);
     defer output.deinit();
     try stringify(first.root, &output.writer);
 
@@ -366,7 +367,7 @@ test "writer round-trips a document" {
     defer first.deinit();
 
     var buffer: [1024]u8 = undefined;
-    var out: std.Io.Writer = .fixed(&buffer);
+    var out: Io.Writer = .fixed(&buffer);
     try stringify(first.root, &out);
 
     var second = try parseFromSlice(testing.allocator, out.buffered(), .{});

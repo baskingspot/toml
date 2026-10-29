@@ -1,8 +1,13 @@
 //! The value tree: what a document holds and what the writer emits.
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
+const mem = std.mem;
+const meta = std.meta;
+const Allocator = mem.Allocator;
 const testing = std.testing;
+const math = std.math;
+const ArenaAllocator = std.heap.ArenaAllocator;
+
 const Datetime = @import("Datetime.zig");
 
 /// A TOML value. A document's root is always the `.table` arm.
@@ -29,13 +34,13 @@ pub const Value = union(enum) {
     /// written as `[[x]]` headers or as `[ ... ]` values is compared, because
     /// it changes the text the writer emits.
     pub fn eql(a: Value, b: Value) bool {
-        if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
+        if (meta.activeTag(a) != meta.activeTag(b)) return false;
         return switch (a) {
-            .string => |s| std.mem.eql(u8, s, b.string),
+            .string => |s| mem.eql(u8, s, b.string),
             .integer => |i| i == b.integer,
             .float => |f| floatEql(f, b.float),
             .boolean => |v| v == b.boolean,
-            .datetime => |d| std.meta.eql(d, b.datetime),
+            .datetime => |d| meta.eql(d, b.datetime),
             .array => |arr| arrayEql(arr, b.array),
             .table => |t| tableEql(t, b.table),
         };
@@ -43,7 +48,7 @@ pub const Value = union(enum) {
 };
 
 fn floatEql(a: f64, b: f64) bool {
-    if (std.math.isNan(a)) return std.math.isNan(b);
+    if (math.isNan(a)) return math.isNan(b);
     return a == b;
 }
 
@@ -148,7 +153,7 @@ pub const Array = struct {
 };
 
 test "eql ignores key order and flags" {
-    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    var arena: ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
@@ -169,7 +174,7 @@ test "eql ignores key order and flags" {
 }
 
 test "eql distinguishes array kinds" {
-    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    var arena: ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
 
@@ -183,7 +188,7 @@ test "eql distinguishes array kinds" {
 
 test "eql treats every nan as equal" {
     try testing.expect(Value.eql(
-        .{ .float = std.math.nan(f64) },
-        .{ .float = -std.math.nan(f64) },
+        .{ .float = math.nan(f64) },
+        .{ .float = -math.nan(f64) },
     ));
 }

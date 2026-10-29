@@ -6,6 +6,7 @@
 //! first error; on success they are untouched.
 
 const std = @import("std");
+const testing = std.testing;
 
 const Diagnostics = @This();
 
@@ -52,12 +53,12 @@ test "message truncates on a character boundary" {
     var d: Diagnostics = .{};
     d.setMessage("é{s}", .{"é" ** 100});
     const text = d.message();
-    try std.testing.expect(text.len < 127);
-    try std.testing.expect(std.unicode.utf8ValidateSlice(text));
+    try testing.expect(text.len < 127);
+    try testing.expect(std.unicode.utf8ValidateSlice(text));
 }
 
 test "message keeps short text whole" {
     var d: Diagnostics = .{};
     d.setMessage("the key `{s}` is already defined", .{"shape"});
-    try std.testing.expectEqualStrings("the key `shape` is already defined", d.message());
+    try testing.expectEqualStrings("the key `shape` is already defined", d.message());
 }

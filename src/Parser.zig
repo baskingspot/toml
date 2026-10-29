@@ -1,14 +1,17 @@
 //! The TOML 1.1.0 parser: source bytes in, value tree out, or a diagnostic.
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 const testing = std.testing;
+const mem = std.mem;
+const math = std.math;
+const ascii = std.ascii;
+const Allocator = mem.Allocator;
 
-const Value = @import("value.zig").Value;
-const Table = @import("value.zig").Table;
 const Array = @import("value.zig").Array;
 const Datetime = @import("Datetime.zig");
 const Diagnostics = @import("Diagnostics.zig");
+const Table = @import("value.zig").Table;
+const Value = @import("value.zig").Value;
 
 const Parser = @This();
 
@@ -67,7 +70,7 @@ fn report(self: *Parser) *Diagnostics {
 /// Parse the whole source. On `error.SyntaxError`, `report()` says where and
 /// why.
 pub fn parse(self: *Parser) Error!Value {
-    if (self.source.len > std.math.maxInt(u32)) {
+    if (self.source.len > math.maxInt(u32)) {
         const diagnostics = self.report();
         diagnostics.span = .{ .start = 0, .end = 0 };
         diagnostics.line = 1;
@@ -76,7 +79,7 @@ pub fn parse(self: *Parser) Error!Value {
         return error.SyntaxError;
     }
     try self.checkUtf8();
-    if (std.mem.startsWith(u8, self.source, "\xEF\xBB\xBF")) self.advanceBy(3);
+    if (mem.startsWith(u8, self.source, "\xEF\xBB\xBF")) self.advanceBy(3);
 
     self.root = try self.newTable(.{});
     self.current = self.root;
@@ -501,12 +504,12 @@ fn sealValue(value: Value) void {
 fn parseBoolean(self: *Parser) Error!bool {
     const mark = self.here();
     while (self.peek()) |c| {
-        if (!std.ascii.isAlphabetic(c)) break;
+        if (!ascii.isAlphabetic(c)) break;
         _ = self.advance();
     }
     const word = self.source[mark.pos..self.pos];
-    if (std.mem.eql(u8, word, "true")) return true;
-    if (std.mem.eql(u8, word, "false")) return false;
+    if (mem.eql(u8, word, "true")) return true;
+    if (mem.eql(u8, word, "false")) return false;
     return self.failAt(
         mark,
         "`{s}` is not a boolean; TOML spells them `true` and `false`",
@@ -551,11 +554,11 @@ fn parseNumber(self: *Parser) Error!Value {
 
     if (self.startsWith("inf")) {
         self.advanceBy(3);
-        return .{ .float = if (sign == true) -std.math.inf(f64) else std.math.inf(f64) };
+        return .{ .float = if (sign == true) -math.inf(f64) else math.inf(f64) };
     }
     if (self.startsWith("nan")) {
         self.advanceBy(3);
-        return .{ .float = if (sign == true) -std.math.nan(f64) else std.math.nan(f64) };
+        return .{ .float = if (sign == true) -math.nan(f64) else math.nan(f64) };
     }
 
     var base: u8 = 10;
@@ -626,7 +629,7 @@ fn cleanNumber(
     buf: *[max_number_len]u8,
 ) Error![]const u8 {
     const literal = self.source[start..self.pos];
-    if (std.mem.findScalar(u8, literal, '_') == null) return literal;
+    if (mem.findScalar(u8, literal, '_') == null) return literal;
     if (literal.len <= buf.len) {
         var len: usize = 0;
         for (literal) |c| {
@@ -940,7 +943,7 @@ fn advanceBy(self: *Parser, count: usize) void {
 }
 
 fn startsWith(self: *const Parser, text: []const u8) bool {
-    return std.mem.startsWith(u8, self.source[self.pos..], text);
+    return mem.startsWith(u8, self.source[self.pos..], text);
 }
 
 /// Whether the value at the current position starts with a date or a time,
@@ -1155,7 +1158,7 @@ fn digitValue(c: u8, base: u8) bool {
         2 => c == '0' or c == '1',
         8 => c >= '0' and c <= '7',
         10 => c >= '0' and c <= '9',
-        16 => std.ascii.isHex(c),
+        16 => ascii.isHex(c),
         else => unreachable,
     };
 }
