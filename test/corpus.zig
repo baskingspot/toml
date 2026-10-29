@@ -39,15 +39,17 @@ test "the valid corpus parses and matches its expectations" {
         if (!entry.valid) continue;
         checked += 1;
         const source = try readFile(allocator, entry.path);
-        const result = try toml.parseFromSlice(allocator, source);
-        var document = switch (result) {
-            .failure => |diagnostic| {
-                try report(entry.path, null, "it did not parse: {s}", .{diagnostic.message()});
+        var diagnostics: toml.Diagnostics = undefined;
+        var document = toml.parseFromSlice(allocator, source, .{
+            .diagnostics = &diagnostics,
+        }) catch |err| switch (err) {
+            error.OutOfMemory => return err,
+            error.SyntaxError => {
+                try report(entry.path, null, "it did not parse: {s}", .{diagnostics.message()});
                 failures += 1;
                 if (failures == max_failures) break;
                 continue;
             },
-            .document => |document| document,
         };
 
         const json_bytes = try readFile(allocator, entry.expected.?);
@@ -79,28 +81,28 @@ test "the invalid corpus is rejected with a diagnostic" {
         if (entry.valid) continue;
         checked += 1;
         const source = try readFile(allocator, entry.path);
-        const result = try toml.parseFromSlice(allocator, source);
-        switch (result) {
-            .failure => |diagnostic| {
-                if (diagnostic.line == 0 or diagnostic.column == 0) {
-                    try report(entry.path, null, "the diagnostic has no position", .{});
+        var diagnostics: toml.Diagnostics = undefined;
+        if (toml.parseFromSlice(allocator, source, .{ .diagnostics = &diagnostics })) |parsed| {
+            var document = parsed;
+            document.deinit();
+            try report(entry.path, null, "it parsed, and it must not", .{});
+            failures += 1;
+        } else |err| switch (err) {
+            error.OutOfMemory => return err,
+            error.SyntaxError => {
+                if (diagnostics.line == 0 or diagnostics.column == 0) {
+                    try report(entry.path, null, "the diagnostics have no position", .{});
                     failures += 1;
-                } else if (diagnostic.span.end < diagnostic.span.start) {
-                    try report(entry.path, null, "the diagnostic span is reversed", .{});
+                } else if (diagnostics.span.end < diagnostics.span.start) {
+                    try report(entry.path, null, "the diagnostics span is reversed", .{});
                     failures += 1;
-                } else if (diagnostic.span.end > source.len) {
-                    try report(entry.path, null, "the diagnostic span runs off the source", .{});
+                } else if (diagnostics.span.end > source.len) {
+                    try report(entry.path, null, "the diagnostics span runs off the source", .{});
                     failures += 1;
-                } else if (diagnostic.message().len == 0) {
-                    try report(entry.path, null, "the diagnostic has no message", .{});
+                } else if (diagnostics.message().len == 0) {
+                    try report(entry.path, null, "the diagnostics have no message", .{});
                     failures += 1;
                 }
-            },
-            .document => |document| {
-                var parsed = document;
-                parsed.deinit();
-                try report(entry.path, null, "it parsed, and it must not", .{});
-                failures += 1;
             },
         }
         if (failures == max_failures) break;
@@ -119,14 +121,14 @@ test "the valid corpus round-trips through the writer" {
     for (entries) |entry| {
         if (!entry.valid) continue;
         const source = try readFile(allocator, entry.path);
-        var first = switch (try toml.parseFromSlice(allocator, source)) {
-            .failure => |diagnostic| {
-                try report(entry.path, null, "it did not parse: {s}", .{diagnostic.message()});
+        var first = toml.parseFromSlice(allocator, source, .{}) catch |err| switch (err) {
+            error.OutOfMemory => return err,
+            error.SyntaxError => {
+                try report(entry.path, null, "it did not parse", .{});
                 failures += 1;
                 if (failures == max_failures) break;
                 continue;
             },
-            .document => |document| document,
         };
 
         var output: std.Io.Writer.Allocating = .init(allocator);
@@ -137,17 +139,20 @@ test "the valid corpus round-trips through the writer" {
             continue;
         };
 
-        var second = switch (try toml.parseFromSlice(allocator, output.written())) {
-            .failure => |diagnostic| {
+        var diagnostics: toml.Diagnostics = undefined;
+        var second = toml.parseFromSlice(allocator, output.written(), .{
+            .diagnostics = &diagnostics,
+        }) catch |err| switch (err) {
+            error.OutOfMemory => return err,
+            error.SyntaxError => {
                 try report(entry.path, null, "the written document does not parse: {s}", .{
-                    diagnostic.message(),
+                    diagnostics.message(),
                 });
                 try report(entry.path, null, "written text:\n{s}", .{output.written()});
                 failures += 1;
                 if (failures == max_failures) break;
                 continue;
             },
-            .document => |document| document,
         };
         if (!toml.Value.eql(first.root, second.root)) {
             try report(entry.path, null, "the written document reads back as another tree", .{});

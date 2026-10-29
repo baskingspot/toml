@@ -16,16 +16,7 @@ const source =
 ;
 
 test "parse a document and look up a value" {
-    const result = try toml.parseFromSlice(testing.allocator, source);
-    var document = switch (result) {
-        .document => |document| document,
-        .failure => |failure| {
-            std.debug.print("{d}:{d}: {s}\n", .{
-                failure.line, failure.column, failure.message(),
-            });
-            return error.TestUnexpectedResult;
-        },
-    };
+    var document = try toml.parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     const root = document.root.table;
@@ -35,33 +26,27 @@ test "parse a document and look up a value" {
 }
 
 test "a bad document comes back with its position" {
-    const result = try toml.parseFromSlice(testing.allocator, "name = \"a\"\nname = \"b\"\n");
-    const failure = switch (result) {
-        .failure => |failure| failure,
-        .document => |document| {
-            var parsed = document;
-            parsed.deinit();
-            return error.TestUnexpectedResult;
-        },
-    };
+    var diagnostics: toml.Diagnostics = undefined;
+    try testing.expectError(
+        error.SyntaxError,
+        toml.parseFromSlice(testing.allocator, "name = \"a\"\nname = \"b\"\n", .{
+            .diagnostics = &diagnostics,
+        }),
+    );
 
-    try testing.expectEqual(@as(u32, 2), failure.line);
-    try testing.expectEqual(@as(u32, 1), failure.column);
+    try testing.expectEqual(@as(u32, 2), diagnostics.line);
+    try testing.expectEqual(@as(u32, 1), diagnostics.column);
     // The span covers the second `name`.
-    try testing.expectEqual(@as(u32, 11), failure.span.start);
-    try testing.expectEqual(@as(u32, 15), failure.span.end);
-    try testing.expect(failure.message().len != 0);
+    try testing.expectEqual(@as(u32, 11), diagnostics.span.start);
+    try testing.expectEqual(@as(u32, 15), diagnostics.span.end);
+    try testing.expect(diagnostics.message().len != 0);
 }
 
 test "the leaky variant uses the caller's arena" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
 
-    const result = try toml.parseFromSliceLeaky(arena.allocator(), source);
-    const document = switch (result) {
-        .document => |document| document,
-        .failure => return error.TestUnexpectedResult,
-    };
+    const document = try toml.parseFromSliceLeaky(arena.allocator(), source, .{});
     try testing.expect(document.arena == null);
     try testing.expectEqualStrings("toml", document.root.table.get("name").?.string);
 }
@@ -82,10 +67,7 @@ test "read a value by its tag" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
 
-    const document = switch (try toml.parseFromSlice(arena.allocator(), source)) {
-        .document => |document| document,
-        .failure => return error.TestUnexpectedResult,
-    };
+    const document = try toml.parseFromSlice(arena.allocator(), source, .{});
     const root = document.root.table;
 
     try testing.expectEqualStrings("float", describe(root.get("version").?));
@@ -127,10 +109,7 @@ test "walk an array of tables" {
         \\[[products]]
         \\name = "Nail"
     ;
-    const document = switch (try toml.parseFromSlice(arena.allocator(), text)) {
-        .document => |document| document,
-        .failure => return error.TestUnexpectedResult,
-    };
+    const document = try toml.parseFromSlice(arena.allocator(), text, .{});
     const products = document.root.table.get("products").?.array;
     try testing.expectEqual(toml.Array.Kind.tables, products.kind);
     try testing.expectEqual(@as(u32, 2), products.count());
@@ -155,20 +134,14 @@ test "write a document and read it back" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
 
-    const first = switch (try toml.parseFromSlice(arena.allocator(), source)) {
-        .document => |document| document,
-        .failure => return error.TestUnexpectedResult,
-    };
+    const first = try toml.parseFromSlice(arena.allocator(), source, .{});
 
     var buffer: [4096]u8 = undefined;
     var out: std.Io.Writer = .fixed(&buffer);
     try toml.stringify(first.root, &out);
     const text = out.buffered();
 
-    const second = switch (try toml.parseFromSlice(arena.allocator(), text)) {
-        .document => |document| document,
-        .failure => return error.TestUnexpectedResult,
-    };
+    const second = try toml.parseFromSlice(arena.allocator(), text, .{});
     try testing.expect(toml.Value.eql(first.root, second.root));
 }
 

@@ -1,8 +1,13 @@
-//! Where a parse failed and what the parser was reading.
+//! Where a parse failed: the bytes, the position, and a message.
+//!
+//! A caller owns this struct and passes it to `parseFromSlice` through
+//! `ParseOptions`. The parser writes into it, so the message stays valid after
+//! the parse returns. On `error.SyntaxError` the fields below describe the
+//! first error; on success they are untouched.
 
 const std = @import("std");
 
-const Diagnostic = @This();
+const Diagnostics = @This();
 
 /// Byte offsets into the source. `start` is the first byte the message refers
 /// to, and `end` is one past the last byte.
@@ -22,15 +27,15 @@ buf: [127]u8 = undefined,
 
 /// The explanation, for example "the key `shape` is already defined".
 ///
-/// The bytes live in the diagnostic itself, so the message stays valid after
-/// the parser that made it is gone.
-pub fn message(self: *const Diagnostic) []const u8 {
+/// The bytes live in this struct, so the message stays valid after the parser
+/// that made it is gone.
+pub fn message(self: *const Diagnostics) []const u8 {
     return self.buf[0..self.len];
 }
 
 /// Render a message into the diagnostic, truncating on a character boundary
 /// when it does not fit.
-pub fn setMessage(self: *Diagnostic, comptime fmt: []const u8, args: anytype) void {
+pub fn setMessage(self: *Diagnostics, comptime fmt: []const u8, args: anytype) void {
     const text = std.fmt.bufPrint(&self.buf, fmt, args) catch {
         // `bufPrint` leaves a partial message on overflow. Cut it back to a
         // UTF-8 boundary so the caller can print it without mojibake.
@@ -44,7 +49,7 @@ pub fn setMessage(self: *Diagnostic, comptime fmt: []const u8, args: anytype) vo
 }
 
 test "message truncates on a character boundary" {
-    var d: Diagnostic = .{};
+    var d: Diagnostics = .{};
     d.setMessage("é{s}", .{"é" ** 100});
     const text = d.message();
     try std.testing.expect(text.len < 127);
@@ -52,7 +57,7 @@ test "message truncates on a character boundary" {
 }
 
 test "message keeps short text whole" {
-    var d: Diagnostic = .{};
+    var d: Diagnostics = .{};
     d.setMessage("the key `{s}` is already defined", .{"shape"});
     try std.testing.expectEqualStrings("the key `shape` is already defined", d.message());
 }

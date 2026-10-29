@@ -14,7 +14,7 @@ TOML 1.0 parser accepts its output: inline tables stay on one line, `\e` is
 written as `\u001b`, `\xHH` as the codepoint in UTF-8, and a time without
 seconds gets `:00`.
 
-- [Reading a document](#reading-a-document): `parseFromSlice` returns a `Document` or a `Diagnostic` with a byte span, a line, and a column.
+- [Reading a document](#reading-a-document): `parseFromSlice` returns a `Document`; a broken document is `error.SyntaxError`, and `Diagnostics` says where.
 - [The value tree](#the-value-tree): `Value`, `Table`, and `Array`, with tables in document order and all four datetime forms.
 - [Writing a document](#writing-a-document): `stringify` emits TOML 1.0.0 that parses back to an equal tree, quoting keys only when the bare form cannot carry them.
 - [Conformance](#conformance): 218 valid and 502 invalid documents from the `toml-test` 1.1.0 list, run by `just test`.
@@ -61,67 +61,64 @@ const source =
     \\login = "matt"
 ;
 
-const result = try toml.parseFromSlice(gpa, source);
-var document = switch (result) {
-    .document => |document| document,
-    .failure => |failure| {
-        std.log.err("{d}:{d}: {s}", .{
-            failure.line, failure.column, failure.message(),
-        });
-        return error.BadConfig;
-    },
-};
+var document = try toml.parseFromSlice(gpa, source, .{});
 defer document.deinit();
 ```
 
-`parseFromSlice` returns a `ParseResult`: either `document` or `failure`. The
-only thrown error is `error.OutOfMemory`, because a broken document is data you
-report, not an exceptional control path.
+`parseFromSlice` returns a `Document` or a `ParseError`: `error.SyntaxError`
+for a document that breaks the grammar, `error.OutOfMemory` for the allocator.
+`try` is the usual call. When you need to know where the parse stopped, pass a
+`Diagnostics` struct in the options.
 
 # Reading a document
 
 ## Parse
 
-`toml.parseFromSlice(allocator, source)` takes the whole document as bytes and
-returns a `ParseResult`.
+`toml.parseFromSlice(allocator, source, options)` takes the whole document as
+bytes and returns a `Document`.
 
 ```zig
-const result = try toml.parseFromSlice(gpa, source);
-switch (result) {
-    .document => |document| {
-        var parsed = document;
-        defer parsed.deinit();
-        // parsed.root is the root table
-    },
-    .failure => |failure| std.log.err("{s}", .{failure.message()}),
-}
+var document = try toml.parseFromSlice(gpa, source, .{});
+defer document.deinit();
+// document.root is the root table
 ```
+
+`.{}` takes the defaults. The one option is `diagnostics`, a pointer the parser
+fills on `error.SyntaxError`.
 
 The source is copied as it is read. You can free it as soon as the call
 returns.
 
 ## Report a bad document
 
-A `Diagnostic` says where the parser stopped:
+A `Diagnostics` struct says where the parser stopped:
 
 - `span` has `start` and `end` as byte offsets into the source.
 - `line` and `column` are one-based, and the column counts bytes.
 - `message()` returns the explanation, naming the key or the byte it expected.
 
-```zig
-const result = try toml.parseFromSlice(gpa, "name = \"a\"\nname = \"b\"\n");
-const failure = switch (result) {
-    .failure => |failure| failure,
-    .document => |document| {
-        var parsed = document;
-        parsed.deinit();
-        return error.TestUnexpectedResult;
-    },
-};
+The struct belongs to the caller, and the parser writes into it, so the message
+stays valid after the parse returns. Declare it, pass a pointer, and read it on
+the error path:
 
-// line 2, column 1, and the span covers the second `name`.
-const where = failure.span;
+```zig
+var diagnostics: toml.Diagnostics = undefined;
+var document = toml.parseFromSlice(gpa, source, .{
+    .diagnostics = &diagnostics,
+}) catch |err| switch (err) {
+    error.SyntaxError => {
+        std.log.err("{d}:{d}: {s}", .{
+            diagnostics.line, diagnostics.column, diagnostics.message(),
+        });
+        return err;
+    },
+    error.OutOfMemory => return err,
+};
+defer document.deinit();
 ```
+
+The parser leaves the struct untouched when the parse succeeds, so do not read
+it after a successful call.
 
 The parser stops at the first error. It does not collect a list.
 
@@ -139,11 +136,7 @@ allocator you pass and returns a `Document` whose `arena` field is null, so its
 var arena: std.heap.ArenaAllocator = .init(gpa);
 defer arena.deinit();
 
-const result = try toml.parseFromSliceLeaky(arena.allocator(), source);
-const document = switch (result) {
-    .document => |document| document,
-    .failure => return error.BadConfig,
-};
+const document = try toml.parseFromSliceLeaky(arena.allocator(), source, .{});
 ```
 
 # The value tree

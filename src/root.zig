@@ -18,17 +18,26 @@ pub const Table = @import("value.zig").Table;
 pub const Array = @import("value.zig").Array;
 /// One of the four TOML datetime forms, down to the nanosecond.
 pub const Datetime = @import("Datetime.zig");
-/// Where a parse failed, and what the parser was reading.
-pub const Diagnostic = @import("Diagnostic.zig");
+/// Where a parse failed: the bytes, the position, and a message. The caller
+/// owns this struct and passes it in `ParseOptions`.
+pub const Diagnostics = @import("Diagnostics.zig");
 /// Byte offsets into the source: the first offending byte and one past the last.
-pub const Span = Diagnostic.Span;
+pub const Span = Diagnostics.Span;
 
 const Parser = @import("Parser.zig");
 const Writer = @import("Writer.zig");
 
-/// The only error a parse returns: the allocator failed. A document that
-/// breaks the grammar is a `failure` in the `ParseResult`, with a diagnostic.
-pub const ParseError = error{OutOfMemory};
+/// What a parse can return: the allocator failed, or the source breaks the
+/// grammar. On `error.SyntaxError`, the `Diagnostics` the caller passed says
+/// where.
+pub const ParseError = Allocator.Error || error{SyntaxError};
+
+/// How to parse a document.
+pub const ParseOptions = struct {
+    /// Filled on `error.SyntaxError`. Untouched when the parse succeeds, and
+    /// on `error.OutOfMemory`. Null means the caller wants only the error.
+    diagnostics: ?*Diagnostics = null,
+};
 
 /// A parsed document and the memory that holds it.
 pub const Document = struct {
@@ -47,34 +56,22 @@ pub const Document = struct {
     }
 };
 
-/// Either a document or the first place the source went wrong.
-pub const ParseResult = union(enum) {
-    /// The parse succeeded.
-    document: Document,
-    /// The parse failed on the source. The span covers the bytes at fault.
-    failure: Diagnostic,
-};
-
 /// Parse one TOML document.
 ///
 /// Every string, table, and array is copied into an arena that the returned
 /// `Document` owns, so the source may be freed as soon as this returns.
-/// `Document.deinit` frees the arena. Allocation failure is `error.OutOfMemory`
-/// and carries no span.
-pub fn parseFromSlice(allocator: Allocator, source: []const u8) ParseError!ParseResult {
+/// `Document.deinit` frees the arena. A document that breaks the grammar is
+/// `error.SyntaxError`, and `options.diagnostics` says where.
+pub fn parseFromSlice(
+    allocator: Allocator,
+    source: []const u8,
+    options: ParseOptions,
+) ParseError!Document {
     var arena: std.heap.ArenaAllocator = .init(allocator);
-    var parser: Parser = .init(arena.allocator(), source);
-    const root = parser.parse() catch |err| switch (err) {
-        error.OutOfMemory => {
-            arena.deinit();
-            return error.OutOfMemory;
-        },
-        error.Syntax => {
-            arena.deinit();
-            return .{ .failure = parser.diagnostic };
-        },
-    };
-    return .{ .document = .{ .arena = arena, .root = root } };
+    errdefer arena.deinit();
+    var parser: Parser = .init(arena.allocator(), source, options.diagnostics);
+    const root = try parser.parse();
+    return .{ .arena = arena, .root = root };
 }
 
 /// Parse one TOML document into memory the caller already owns.
@@ -83,13 +80,14 @@ pub fn parseFromSlice(allocator: Allocator, source: []const u8) ParseError!Parse
 /// request or a configuration load. The returned document owns nothing, and
 /// `Document.deinit` does not free the caller's memory. The source is still
 /// copied, so it may be freed as soon as this returns.
-pub fn parseFromSliceLeaky(allocator: Allocator, source: []const u8) ParseError!ParseResult {
-    var parser: Parser = .init(allocator, source);
-    const root = parser.parse() catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        error.Syntax => return .{ .failure = parser.diagnostic },
-    };
-    return .{ .document = .{ .root = root } };
+pub fn parseFromSliceLeaky(
+    allocator: Allocator,
+    source: []const u8,
+    options: ParseOptions,
+) ParseError!Document {
+    var parser: Parser = .init(allocator, source, options.diagnostics);
+    const root = try parser.parse();
+    return .{ .root = root };
 }
 
 /// What `stringify` can fail with: the sink, a value that is not a table, or
@@ -119,18 +117,7 @@ test "parse a small document" {
         \\login = "matt"
         \\joined = 1979-05-27T07:32:00Z
     ;
-    const result = try parseFromSlice(testing.allocator, source);
-    var document = switch (result) {
-        .failure => |diagnostic| {
-            std.debug.print("{d}:{d}: {s}\n", .{
-                diagnostic.line,
-                diagnostic.column,
-                diagnostic.message(),
-            });
-            return error.TestUnexpectedResult;
-        },
-        .document => |document| document,
-    };
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     const root = document.root.table;
@@ -144,36 +131,42 @@ test "parse a small document" {
     try testing.expectEqual(Datetime.Kind.offset, owner.get("joined").?.datetime.kind);
 }
 
-test "a syntax error reports the line and column" {
-    const result = try parseFromSlice(testing.allocator, "a = 1\nb = \nc = 3\n");
-    const diagnostic = switch (result) {
-        .failure => |diagnostic| diagnostic,
-        .document => |document| {
-            var copy = document;
-            copy.deinit();
-            return error.TestUnexpectedResult;
-        },
-    };
-    try testing.expectEqual(@as(u32, 2), diagnostic.line);
-    try testing.expectEqual(@as(u32, 5), diagnostic.column);
-    try testing.expectEqual(@as(u32, 10), diagnostic.span.start);
-    try testing.expect(diagnostic.message().len != 0);
+test "a syntax error fills the diagnostics the caller passed" {
+    var diagnostics: Diagnostics = undefined;
+    try testing.expectError(
+        error.SyntaxError,
+        parseFromSlice(testing.allocator, "a = 1\nb = \nc = 3\n", .{
+            .diagnostics = &diagnostics,
+        }),
+    );
+    try testing.expectEqual(@as(u32, 2), diagnostics.line);
+    try testing.expectEqual(@as(u32, 5), diagnostics.column);
+    try testing.expectEqual(@as(u32, 10), diagnostics.span.start);
+    try testing.expect(diagnostics.message().len != 0);
+}
+
+test "a successful parse leaves the diagnostics alone" {
+    var diagnostics: Diagnostics = .{ .line = 99, .column = 7 };
+    var document = try parseFromSlice(testing.allocator, "a = 1\n", .{
+        .diagnostics = &diagnostics,
+    });
+    defer document.deinit();
+    try testing.expectEqual(@as(u32, 99), diagnostics.line);
+    try testing.expectEqual(@as(u32, 7), diagnostics.column);
 }
 
 test "duplicate keys are rejected" {
-    const result = try parseFromSlice(testing.allocator, "a = 1\na = 2\n");
-    try testing.expect(result == .failure);
+    try testing.expectError(
+        error.SyntaxError,
+        parseFromSlice(testing.allocator, "a = 1\na = 2\n", .{}),
+    );
 }
 
 test "the document does not borrow the source" {
     const allocator = testing.allocator;
     const source = try allocator.dupe(u8, "key = \"value\"\n");
-    const result = try parseFromSlice(allocator, source);
+    var document = try parseFromSlice(allocator, source, .{});
     allocator.free(source);
-    var document = switch (result) {
-        .failure => return error.TestUnexpectedResult,
-        .document => |document| document,
-    };
     defer document.deinit();
     try testing.expectEqualStrings("value", document.root.table.get("key").?.string);
 }
@@ -181,11 +174,7 @@ test "the document does not borrow the source" {
 test "parseFromSliceLeaky writes into the caller's allocator" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
-    const result = try parseFromSliceLeaky(arena.allocator(), "a = 1\n");
-    const document = switch (result) {
-        .failure => return error.TestUnexpectedResult,
-        .document => |document| document,
-    };
+    const document = try parseFromSliceLeaky(arena.allocator(), "a = 1\n", .{});
     try testing.expect(document.arena == null);
     try testing.expectEqual(@as(i64, 1), document.root.table.get("a").?.integer);
 }
@@ -202,13 +191,7 @@ test "an inline table may span lines and hold a comment" {
         \\  },
         \\}
     ;
-    var document = switch (try parseFromSlice(testing.allocator, source)) {
-        .failure => |diagnostic| {
-            std.debug.print("{s}\n", .{diagnostic.message()});
-            return error.TestUnexpectedResult;
-        },
-        .document => |document| document,
-    };
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     const table = document.root.table.get("tbl").?.table;
@@ -224,13 +207,7 @@ test "an inline table may end with a comma" {
         \\  b = 2,
         \\}
     ;
-    var document = switch (try parseFromSlice(testing.allocator, source)) {
-        .failure => |diagnostic| {
-            std.debug.print("{s}\n", .{diagnostic.message()});
-            return error.TestUnexpectedResult;
-        },
-        .document => |document| document,
-    };
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     const root = document.root.table;
@@ -239,26 +216,14 @@ test "an inline table may end with a comma" {
 }
 
 test "\\e is the escape character" {
-    var document = switch (try parseFromSlice(testing.allocator, "x = \"a\\eb\"\n")) {
-        .failure => |diagnostic| {
-            std.debug.print("{s}\n", .{diagnostic.message()});
-            return error.TestUnexpectedResult;
-        },
-        .document => |document| document,
-    };
+    var document = try parseFromSlice(testing.allocator, "x = \"a\\eb\"\n", .{});
     defer document.deinit();
     try testing.expectEqualStrings("a\x1bb", document.root.table.get("x").?.string);
 }
 
 test "\\xHH is a codepoint up to 255" {
     const source = "x = \"\\x41\\xf8\\x00\\x7f\"\n";
-    var document = switch (try parseFromSlice(testing.allocator, source)) {
-        .failure => |diagnostic| {
-            std.debug.print("{s}\n", .{diagnostic.message()});
-            return error.TestUnexpectedResult;
-        },
-        .document => |document| document,
-    };
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
     // \xHH is a codepoint, not a byte: U+00F8 is two UTF-8 bytes.
     try testing.expectEqualStrings("A\u{f8}\x00\x7f", document.root.table.get("x").?.string);
@@ -272,13 +237,7 @@ test "seconds are optional in times and datetimes" {
         \\fraction = 07:32:00.5
         \\full = 1979-05-27T07:32:00
     ;
-    var document = switch (try parseFromSlice(testing.allocator, source)) {
-        .failure => |diagnostic| {
-            std.debug.print("{s}\n", .{diagnostic.message()});
-            return error.TestUnexpectedResult;
-        },
-        .document => |document| document,
-    };
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     const root = document.root.table;
@@ -312,13 +271,7 @@ test "the writer emits TOML 1.0 for every 1.1 feature" {
         \\  a = 1,
         \\}
     ;
-    var document = switch (try parseFromSlice(testing.allocator, source)) {
-        .failure => |diagnostic| {
-            std.debug.print("{s}\n", .{diagnostic.message()});
-            return error.TestUnexpectedResult;
-        },
-        .document => |document| document,
-    };
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     var buffer: [512]u8 = undefined;
@@ -340,13 +293,7 @@ test "the writer emits TOML 1.0 for every 1.1 feature" {
 test "a number literal past the stack buffer still parses" {
     // 402 bytes with underscores: `cleanNumber` has to take an arena buffer.
     const source = "x = 1." ++ ("0_" ** 200) ++ "5\n";
-    var document = switch (try parseFromSlice(testing.allocator, source)) {
-        .failure => |diagnostic| {
-            std.debug.print("{s}\n", .{diagnostic.message()});
-            return error.TestUnexpectedResult;
-        },
-        .document => |document| document,
-    };
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
     try testing.expectEqual(@as(f64, 1.0), document.root.table.get("x").?.float);
 }
@@ -357,12 +304,15 @@ test "a key path deeper than the limit is a diagnostic" {
     try out.writeAll("a");
     for (0..32) |_| try out.writeAll(".a");
     try out.writeAll(" = 1\n");
-    try testing.expect((try parseFromSlice(testing.allocator, out.buffered())) == .failure);
+    try testing.expectError(
+        error.SyntaxError,
+        parseFromSlice(testing.allocator, out.buffered(), .{}),
+    );
 }
 
 test "an array nested past the limit is a diagnostic" {
     const source = "x = " ++ ("[" ** 129) ++ "1" ++ ("]" ** 129);
-    try testing.expect((try parseFromSlice(testing.allocator, source)) == .failure);
+    try testing.expectError(error.SyntaxError, parseFromSlice(testing.allocator, source, .{}));
 }
 
 test "fuzz: the parser survives arbitrary bytes" {
@@ -384,20 +334,15 @@ fn fuzzParse(_: void, smith: *testing.Smith) anyerror!void {
     var buffer: [4096]u8 = undefined;
     const source = buffer[0..smith.slice(&buffer)];
 
-    var first = switch (try parseFromSlice(testing.allocator, source)) {
-        .failure => return,
-        .document => |document| document,
-    };
+    var first = parseFromSlice(testing.allocator, source, .{}) catch return;
     defer first.deinit();
 
     var output: std.Io.Writer.Allocating = .init(testing.allocator);
     defer output.deinit();
     try stringify(first.root, &output.writer);
 
-    var second = switch (try parseFromSlice(testing.allocator, output.written())) {
-        .failure => return error.FuzzRoundTripRejected,
-        .document => |document| document,
-    };
+    var second = parseFromSlice(testing.allocator, output.written(), .{}) catch
+        return error.FuzzRoundTripRejected;
     defer second.deinit();
     if (!Value.eql(first.root, second.root)) return error.FuzzRoundTripMismatch;
 }
@@ -417,20 +362,14 @@ test "writer round-trips a document" {
         \\width = 1.5
         \\tags = ["a", "b"]
     ;
-    var first = switch (try parseFromSlice(testing.allocator, source)) {
-        .failure => return error.TestUnexpectedResult,
-        .document => |document| document,
-    };
+    var first = try parseFromSlice(testing.allocator, source, .{});
     defer first.deinit();
 
     var buffer: [1024]u8 = undefined;
     var out: std.Io.Writer = .fixed(&buffer);
     try stringify(first.root, &out);
 
-    var second = switch (try parseFromSlice(testing.allocator, out.buffered())) {
-        .failure => return error.TestUnexpectedResult,
-        .document => |document| document,
-    };
+    var second = try parseFromSlice(testing.allocator, out.buffered(), .{});
     defer second.deinit();
 
     try testing.expect(Value.eql(first.root, second.root));

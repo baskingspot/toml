@@ -8,12 +8,12 @@ const Value = @import("value.zig").Value;
 const Table = @import("value.zig").Table;
 const Array = @import("value.zig").Array;
 const Datetime = @import("Datetime.zig");
-const Diagnostic = @import("Diagnostic.zig");
+const Diagnostics = @import("Diagnostics.zig");
 
 const Parser = @This();
 
-/// The parser's failures. A syntax error also fills in `diagnostic`.
-pub const Error = error{ Syntax, OutOfMemory };
+/// The parser's failures. A syntax error also fills in the diagnostics.
+pub const Error = error{ SyntaxError, OutOfMemory };
 
 /// How many segments a dotted key or a header may have. This also bounds the
 /// table depth of any parsed tree, because a header's path length is the depth
@@ -35,7 +35,10 @@ column: u32 = 1,
 allocator: Allocator,
 root: *Table = undefined,
 current: *Table = undefined,
-diagnostic: Diagnostic = .{},
+/// The caller's struct, when it passed one. Written in place on failure.
+diagnostics: ?*Diagnostics = null,
+/// Stands in when the caller passed none, so the failure path has one shape.
+fallback: Diagnostics = .{},
 depth: u32 = 0,
 
 /// A position to report errors against, taken before the bytes are read.
@@ -46,21 +49,31 @@ const Mark = struct {
 };
 
 /// Prepare to parse `source`. Every value, key, and table is allocated from
-/// `allocator`, which is usually an arena's.
-pub fn init(allocator: Allocator, source: []const u8) Parser {
-    return .{ .source = source, .allocator = allocator };
+/// `allocator`, which is usually an arena's. A syntax error is written to
+/// `diagnostics` when it is not null.
+pub fn init(allocator: Allocator, source: []const u8, diagnostics: ?*Diagnostics) Parser {
+    return .{
+        .source = source,
+        .allocator = allocator,
+        .diagnostics = diagnostics,
+    };
 }
 
-/// Parse the whole source. On `error.Syntax`, `diagnostic` says where and why.
+/// The struct a failure writes into, the caller's or the fallback.
+fn report(self: *Parser) *Diagnostics {
+    return self.diagnostics orelse &self.fallback;
+}
+
+/// Parse the whole source. On `error.SyntaxError`, `report()` says where and
+/// why.
 pub fn parse(self: *Parser) Error!Value {
     if (self.source.len > std.math.maxInt(u32)) {
-        self.diagnostic = .{
-            .span = .{ .start = 0, .end = 0 },
-            .line = 1,
-            .column = 1,
-        };
-        self.diagnostic.setMessage("the source is longer than 4 GiB", .{});
-        return error.Syntax;
+        const diagnostics = self.report();
+        diagnostics.span = .{ .start = 0, .end = 0 };
+        diagnostics.line = 1;
+        diagnostics.column = 1;
+        diagnostics.setMessage("the source is longer than 4 GiB", .{});
+        return error.SyntaxError;
     }
     try self.checkUtf8();
     if (std.mem.startsWith(u8, self.source, "\xEF\xBB\xBF")) self.advanceBy(3);
@@ -1079,13 +1092,12 @@ fn failUtf8(self: *Parser, at: usize) Error {
             column += 1;
         }
     }
-    self.diagnostic = .{
-        .span = .{ .start = @intCast(at), .end = @intCast(at + 1) },
-        .line = line,
-        .column = column,
-    };
-    self.diagnostic.setMessage("the source is not valid UTF-8", .{});
-    return error.Syntax;
+    const diagnostics = self.report();
+    diagnostics.span = .{ .start = @intCast(at), .end = @intCast(at + 1) };
+    diagnostics.line = line;
+    diagnostics.column = column;
+    diagnostics.setMessage("the source is not valid UTF-8", .{});
+    return error.SyntaxError;
 }
 
 // Failures
@@ -1100,13 +1112,12 @@ fn failAt(self: *Parser, mark: Mark, comptime fmt: []const u8, args: anytype) Er
 }
 
 fn failRange(self: *Parser, mark: Mark, end: usize, comptime fmt: []const u8, args: anytype) Error {
-    self.diagnostic = .{
-        .span = .{ .start = @intCast(mark.pos), .end = @intCast(end) },
-        .line = mark.line,
-        .column = mark.column,
-    };
-    self.diagnostic.setMessage(fmt, args);
-    return error.Syntax;
+    const diagnostics = self.report();
+    diagnostics.span = .{ .start = @intCast(mark.pos), .end = @intCast(end) };
+    diagnostics.line = mark.line;
+    diagnostics.column = mark.column;
+    diagnostics.setMessage(fmt, args);
+    return error.SyntaxError;
 }
 
 fn failUnexpected(self: *Parser, mark: Mark, comptime context: []const u8) Error {

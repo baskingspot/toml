@@ -18,16 +18,7 @@ written as `\u001b`, `\xHH` as the codepoint in UTF-8, and a time without
 seconds gets `:00`.
 
 ```zig
-const result = try toml.parseFromSlice(gpa, source);
-var document = switch (result) {
-    .document => |document| document,
-    .failure => |failure| {
-        std.log.err("{d}:{d}: {s}", .{
-            failure.line, failure.column, failure.message(),
-        });
-        return error.BadConfig;
-    },
-};
+var document = try toml.parseFromSlice(gpa, source, .{});
 defer document.deinit();
 ```
 
@@ -35,7 +26,7 @@ The library is incubating: pin a commit, and expect the API to move.
 
 ## What is in it
 
-- [Reading a document](https://baskingspot.dev/toml/#reading-a-document): `parseFromSlice` returns a `Document` or a `Diagnostic` with a byte span, a line, and a column.
+- [Reading a document](https://baskingspot.dev/toml/#reading-a-document): `parseFromSlice` returns a `Document`; a broken document is `error.SyntaxError`, and `Diagnostics` says where.
 - [The value tree](https://baskingspot.dev/toml/#the-value-tree): `Value`, `Table`, and `Array`, with tables in document order and all four datetime forms.
 - [Writing a document](https://baskingspot.dev/toml/#writing-a-document): `stringify` emits TOML 1.0.0 that parses back to an equal tree, quoting keys only when the bare form cannot carry them.
 - [Conformance](https://baskingspot.dev/toml/#conformance): 218 valid and 502 invalid documents from the `toml-test` 1.1.0 list, run by `just test`.
