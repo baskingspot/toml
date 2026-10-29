@@ -360,6 +360,12 @@ value.
 document read and written again keeps its values and loses its layout, the way
 a formatter would.
 
+## No streaming parser
+
+`parseFromSlice` wants the whole document in memory, and the tree copies every
+string into the arena. There is no incremental interface, so a document must be
+read into memory before it is parsed.
+
 ## Fixed limits
 
 - A dotted key or header has at most 32 segments. A deeper one is rejected with

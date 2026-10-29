@@ -64,7 +64,8 @@ exe.root_module.addImport("toml", toml.module("toml"));
 ## Documentation
 
 - The [guide](https://baskingspot.dev/toml/) covers parsing, the tree, writing, and the corpus.
-- The [API reference](https://baskingspot.dev/toml/api/) documents every public symbol. Every declaration in `src/` carries the doc comment it renders, and `zigdoc toml.Value` reads one from the local build.
+- The [API reference](https://baskingspot.dev/toml/api/) documents every public symbol. Every declaration in `src/` carries the doc comment the API entry renders.
+- [`docs/examples/`](docs/examples/) is the test-verified code shown in the guide: `just test` compiles and runs it alongside the module's own tests.
 - [`AGENTS.md`](AGENTS.md) has the working notes for the repository.
 
 ## Work on it
