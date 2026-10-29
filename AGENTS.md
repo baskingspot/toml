@@ -10,6 +10,8 @@ TOML 1.0 in Zig: a strict parser, a value tree, and a writer. It is incubating: 
 
 Zig 0.16 only. The flake is the tool contract, from `baskingspot/nix`: `nix develop` provides Zig, `ziglint`, and the base tools, and nothing comes from the system PATH. The justfile is the command interface: `just test`, `just lint`, `just ci`. Run `just fmt` before you commit.
 
+The conformance corpus in `test/toml-test/` is vendored from `toml-lang/toml-test` and must not be edited to make a test pass; `THIRD_PARTY.md` records the commit. `just test` runs the corpus, `just fuzz` runs the parser fuzz target.
+
 ## Rules
 
 - Commit messages are one line, `area: summary`, and every commit is signed. Do not rewrite pushed history.

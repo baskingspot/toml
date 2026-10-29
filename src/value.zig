@@ -5,6 +5,7 @@ const Allocator = std.mem.Allocator;
 const testing = std.testing;
 const Datetime = @import("Datetime.zig");
 
+/// A TOML value. A document's root is always the `.table` arm.
 pub const Value = union(enum) {
     /// Bytes. A string from a parse is owned by the document's arena.
     string: []const u8,

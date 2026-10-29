@@ -43,11 +43,14 @@ nanosecond: u32 = 0,
 offset_minutes: i16 = 0,
 kind: Kind,
 
+/// The only failure `scan` and `parse` report: the text is not a datetime.
 pub const Error = error{InvalidDatetime};
 
 /// A datetime found at the start of some text, and the bytes it used.
 pub const Scanned = struct {
+    /// The value.
     value: Datetime,
+    /// Bytes of the input the value's text occupies.
     len: usize,
 };
 

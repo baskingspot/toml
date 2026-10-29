@@ -9,11 +9,17 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
 
+/// A TOML value: a table, an array, a scalar, or a datetime.
 pub const Value = @import("value.zig").Value;
+/// A table, with its keys in the order the document declared them.
 pub const Table = @import("value.zig").Table;
+/// An array, with its elements in document order.
 pub const Array = @import("value.zig").Array;
+/// One of the four TOML datetime forms, down to the nanosecond.
 pub const Datetime = @import("Datetime.zig");
+/// Where a parse failed, and what the parser was reading.
 pub const Diagnostic = @import("Diagnostic.zig");
+/// Byte offsets into the source: the first offending byte and one past the last.
 pub const Span = Diagnostic.Span;
 
 const Parser = @import("Parser.zig");
@@ -85,6 +91,8 @@ pub fn parseFromSliceLeaky(allocator: Allocator, source: []const u8) ParseError!
     return .{ .document = .{ .root = root } };
 }
 
+/// What `stringify` can fail with: the sink, a value that is not a table, or
+/// a tree nested deeper than the writer walks.
 pub const StringifyError = std.Io.Writer.Error || error{ NotATable, NestingTooDeep };
 
 /// Write `value` as a TOML document.

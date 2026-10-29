@@ -1,0 +1,22 @@
+# The toml guide, served at baskingspot.dev/toml/. The theme and the site build
+# come from baskingspot-docs; the router in baskingspot/site serves /toml/...
+base_url = "https://baskingspot.dev/toml"
+theme = "baskingspot"
+title = "toml"
+description = "TOML 1.0.0 in Zig: a strict parser, a value tree, and a writer."
+
+generate_feeds = false
+build_search_index = false
+
+[markdown]
+insert_anchor_links = "heading"
+
+[markdown.highlighting]
+# An unknown fence language is a build error, not an unhighlighted block.
+error_on_missing_language = true
+light_theme = "github-light"
+dark_theme = "github-dark"
+
+[extra]
+repo = "baskingspot/toml"
+api = true

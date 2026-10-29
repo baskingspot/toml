@@ -12,6 +12,7 @@ const Diagnostic = @import("Diagnostic.zig");
 
 const Parser = @This();
 
+/// The parser's failures. A syntax error also fills in `diagnostic`.
 pub const Error = error{ Syntax, OutOfMemory };
 
 /// How many segments a dotted key or a header may have. This also bounds the
@@ -44,6 +45,8 @@ const Mark = struct {
     column: u32,
 };
 
+/// Prepare to parse `source`. Every value, key, and table is allocated from
+/// `allocator`, which is usually an arena's.
 pub fn init(allocator: Allocator, source: []const u8) Parser {
     return .{ .source = source, .allocator = allocator };
 }
