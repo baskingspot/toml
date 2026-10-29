@@ -70,12 +70,14 @@
     // Paths are relative to the build root. Use the empty string (`""`) to refer to
     // the build root itself.
     // A directory listed here means that all files within, recursively, are included.
+    // The test corpus is 3.8 MiB of conformance data and is not part of the
+    // package a consumer fetches, so `test/` stays out.
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
-        // For example...
-        //"LICENSE",
-        //"README.md",
+        "LICENSE",
+        "README.md",
+        "THIRD_PARTY.md",
     },
 }
