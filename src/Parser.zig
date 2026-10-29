@@ -1,4 +1,4 @@
-//! The TOML 1.0.0 parser: source bytes in, value tree out, or a diagnostic.
+//! The TOML 1.1.0 parser: source bytes in, value tree out, or a diagnostic.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -419,19 +419,16 @@ fn parseInlineTable(self: *Parser) Error!*Table {
     try self.enter(mark);
     defer self.depth -= 1;
 
-    self.skipSpaces();
+    // TOML 1.1: whitespace, newlines, and comments are allowed anywhere
+    // between a brace and a key, a comma, or the closing brace.
+    try self.skipArraySpace();
     const opening = self.peek() orelse {
         return self.failAt(mark, "expected `}}` to close the inline table", .{});
     };
-    switch (opening) {
-        '}' => {
-            _ = self.advance();
-            seal(table);
-            return table;
-        },
-        '\n', '\r' => return self.failAt(mark, "an inline table cannot span lines", .{}),
-        '#' => return self.failAt(mark, "a comment is not allowed in an inline table", .{}),
-        else => {},
+    if (opening == '}') {
+        _ = self.advance();
+        seal(table);
+        return table;
     }
 
     while (true) {
@@ -447,19 +444,19 @@ fn parseInlineTable(self: *Parser) Error!*Table {
         const value = try self.parseValue();
         try self.insert(table, path.segments, key_mark, path.end, value);
 
-        self.skipSpaces();
-        const first = self.peek() orelse {
+        try self.skipArraySpace();
+        const next = self.peek() orelse {
             return self.failAt(mark, "expected `}}` to close the inline table", .{});
         };
-        switch (first) {
+        switch (next) {
             ',' => {
                 _ = self.advance();
-                self.skipSpaces();
+                try self.skipArraySpace();
+                // A trailing comma is allowed since TOML 1.1.
                 if (self.peek() == '}') {
-                    return self.failAt(mark, "an inline table cannot have a trailing comma", .{});
-                }
-                if (self.peek() == null or self.peek() == '\n' or self.peek() == '\r') {
-                    return self.failAt(mark, "an inline table cannot span lines", .{});
+                    _ = self.advance();
+                    seal(table);
+                    return table;
                 }
             },
             '}' => {
@@ -467,8 +464,6 @@ fn parseInlineTable(self: *Parser) Error!*Table {
                 seal(table);
                 return table;
             },
-            '\n', '\r' => return self.failAt(mark, "an inline table cannot span lines", .{}),
-            '#' => return self.failAt(mark, "a comment is not allowed in an inline table", .{}),
             else => return self.failHere("expected `,` or `}}` in the inline table", .{}),
         }
     }
@@ -844,6 +839,7 @@ fn decodeEscape(text: []const u8, multiline: bool) ?Escape {
         'n' => '\n',
         'f' => 0x0C,
         'r' => '\r',
+        'e' => 0x1B,
         '"' => '"',
         '\\' => '\\',
         else => null,
@@ -851,6 +847,11 @@ fn decodeEscape(text: []const u8, multiline: bool) ?Escape {
     if (simple) |value| return .{ .len = 2, .value = .{ value, 0, 0, 0 }, .value_len = 1 };
 
     switch (byte) {
+        'x' => {
+            if (text.len < 4) return null;
+            const code = hexValue(text[2..4]) orelse return null;
+            return encodeEscape(@intCast(code), 4);
+        },
         'u' => {
             if (text.len < 6) return null;
             const code = hexValue(text[2..6]) orelse return null;

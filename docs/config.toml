@@ -3,7 +3,7 @@
 base_url = "https://baskingspot.dev/toml"
 theme = "baskingspot"
 title = "toml"
-description = "TOML 1.0.0 in Zig: a strict parser, a value tree, and a writer."
+description = "TOML 1.1.0 in Zig: a strict parser, a value tree, and a writer."
 
 generate_feeds = false
 build_search_index = false

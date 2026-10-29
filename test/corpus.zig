@@ -1,6 +1,6 @@
 //! The toml-test conformance corpus, run against the public API.
 //!
-//! `test/toml-test/` holds the files listed in `tests/files-toml-1.0.0` from
+//! `test/toml-test/` holds the files listed in `tests/files-toml-1.1.0` from
 //! github.com/toml-lang/toml-test. Every valid document must parse and match
 //! its tagged-JSON expectation, every invalid document must be rejected with a
 //! diagnostic, and every valid document must survive a write and a re-parse.
@@ -14,7 +14,7 @@ const testing = std.testing;
 const toml = @import("toml");
 
 const corpus = "test/toml-test/tests";
-const manifest = "files-toml-1.0.0";
+const manifest = "files-toml-1.1.0";
 const max_file_size = 16 * 1024 * 1024;
 const max_failures = 10;
 

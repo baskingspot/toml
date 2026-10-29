@@ -4,7 +4,7 @@ Working notes for AI coding agents in baskingspot/toml.
 
 ## What this is
 
-TOML 1.0 in Zig: a strict parser, a value tree, and a writer. It is incubating: unstable, with no promises about its API.
+TOML 1.1 in Zig: a strict parser, a value tree, and a writer. The parser reads 1.1.0; the writer emits 1.0.0 so any 1.0 parser accepts its output. It is incubating: unstable, with no promises about its API.
 
 ## Environment
 

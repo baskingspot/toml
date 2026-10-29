@@ -1,4 +1,4 @@
-# toml: TOML 1.0.0 in Zig: a strict parser, a value tree, and a writer. `just --list` shows the recipes.
+# toml: TOML 1.1.0 in Zig: a strict parser, a value tree, and a writer. `just --list` shows the recipes.
 # AGENTS.md holds the working conventions.
 
 [private]

@@ -1,10 +1,11 @@
 //! The four datetime forms TOML separates, and the text that spells them.
 //!
-//! TOML 1.0.0 borrows RFC 3339 with four shapes: an offset date-time is an
-//! instant, and the local date-time, date, and time forms are wall clock
-//! values with no zone. Seconds are required, and a fractional second keeps
-//! nanosecond precision; digits past the ninth are truncated, which the
-//! specification allows.
+//! TOML borrows RFC 3339 with four shapes: an offset date-time is an instant,
+//! and the local date-time, date, and time forms are wall clock values with no
+//! zone. TOML 1.1 makes the seconds optional, in which case they count as
+//! zero, and `write` always emits them. A fractional second keeps nanosecond
+//! precision; digits past the ninth are truncated, which the specification
+//! allows.
 
 const std = @import("std");
 const assert = std.debug.assert;
@@ -34,7 +35,8 @@ day: u8 = 0,
 hour: u8 = 0,
 /// Minute, 0 to 59. Zero on a `local_date`.
 minute: u8 = 0,
-/// Second, 0 to 60. Sixty is a leap second, which RFC 3339 permits.
+/// Second, 0 to 60. Sixty is a leap second, which RFC 3339 permits. Zero when
+/// the text omitted the seconds.
 second: u8 = 0,
 /// Fractional second in nanoseconds, 0 to 999_999_999.
 nanosecond: u32 = 0,
@@ -205,25 +207,33 @@ fn scanDate(text: []const u8) Error!Date {
 }
 
 fn scanTime(text: []const u8) Error!Time {
-    if (text.len < 8) return error.InvalidDatetime;
+    if (text.len < 5) return error.InvalidDatetime;
     const hour = twoDigits(text, 0) orelse return error.InvalidDatetime;
     if (text[2] != ':') return error.InvalidDatetime;
     const minute = twoDigits(text, 3) orelse return error.InvalidDatetime;
-    if (text[5] != ':') return error.InvalidDatetime;
-    const second = twoDigits(text, 6) orelse return error.InvalidDatetime;
-    if (hour > 23 or minute > 59 or second > 60) return error.InvalidDatetime;
+    if (hour > 23 or minute > 59) return error.InvalidDatetime;
 
-    var len: usize = 8;
+    var len: usize = 5;
+    var second: u8 = 0;
     var nanosecond: u32 = 0;
-    if (len < text.len and text[len] == '.') {
+    if (len < text.len and text[len] == ':') {
         len += 1;
-        const start = len;
-        while (len < text.len and isDigit(text[len])) : (len += 1) {
-            if (len - start < 9) nanosecond = nanosecond * 10 + (text[len] - '0');
+        second = twoDigits(text, len) orelse return error.InvalidDatetime;
+        if (second > 60) return error.InvalidDatetime;
+        len += 2;
+        if (len < text.len and text[len] == '.') {
+            len += 1;
+            const start = len;
+            while (len < text.len and isDigit(text[len])) : (len += 1) {
+                if (len - start < 9) nanosecond = nanosecond * 10 + (text[len] - '0');
+            }
+            if (len == start) return error.InvalidDatetime;
+            var digits = len - start;
+            while (digits < 9) : (digits += 1) nanosecond *= 10;
         }
-        if (len == start) return error.InvalidDatetime;
-        var digits = len - start;
-        while (digits < 9) : (digits += 1) nanosecond *= 10;
+    } else if (len < text.len and text[len] == '.') {
+        // A fractional second needs the second it belongs to.
+        return error.InvalidDatetime;
     }
     return .{
         .hour = hour,
@@ -308,6 +318,17 @@ test "scan reads the four forms" {
     try testing.expectEqual(Kind.local_time, time.value.kind);
     try testing.expectEqual(@as(u32, 500_000_000), time.value.nanosecond);
     try testing.expectEqual(@as(usize, 10), time.len);
+
+    // TOML 1.1: the seconds may be omitted, and count as zero.
+    const minute_only = (try scan("07:32")).?;
+    try testing.expectEqual(Kind.local_time, minute_only.value.kind);
+    try testing.expectEqual(@as(u8, 0), minute_only.value.second);
+    try testing.expectEqual(@as(usize, 5), minute_only.len);
+
+    const no_seconds = (try scan("1979-05-27T07:32Z")).?;
+    try testing.expectEqual(Kind.offset, no_seconds.value.kind);
+    try testing.expectEqual(@as(u8, 0), no_seconds.value.second);
+    try testing.expectEqual(@as(usize, 17), no_seconds.len);
 }
 
 test "scan stops at the end of the datetime" {
@@ -326,7 +347,8 @@ test "scan rejects bad fields" {
     try testing.expectError(error.InvalidDatetime, scan("2020-01-01T24:00:00Z"));
     try testing.expectError(error.InvalidDatetime, scan("2020-01-01T00:00:61Z"));
     try testing.expectError(error.InvalidDatetime, scan("2020-01-01T00:00:00+24:00"));
-    try testing.expectError(error.InvalidDatetime, scan("2020-01-01T00:00"));
+    try testing.expectError(error.InvalidDatetime, scan("07:32.5"));
+    try testing.expectError(error.InvalidDatetime, scan("2020-01-01T00:00:61"));
 }
 
 test "scan accepts leap days and leap seconds" {
@@ -358,6 +380,8 @@ test "write normalizes spelling and keeps the meaning" {
         .{ .input = "1979-05-27 07:32:00.600", .output = "1979-05-27T07:32:00.6" },
         .{ .input = "1979-05-27", .output = "1979-05-27" },
         .{ .input = "00:32:00.999999", .output = "00:32:00.999999" },
+        .{ .input = "07:32", .output = "07:32:00" },
+        .{ .input = "1979-05-27T07:32", .output = "1979-05-27T07:32:00" },
     };
     for (cases) |case| {
         const value = try parse(case.input);

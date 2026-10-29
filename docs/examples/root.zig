@@ -142,6 +142,9 @@ test "parse and write a datetime" {
     try testing.expectEqual(@as(i16, 0), when.offset_minutes);
     try testing.expectEqual(toml.Datetime.Kind.offset, when.kind);
 
+    const minute = try toml.Datetime.parse("07:32");
+    try testing.expectEqual(@as(u8, 0), minute.second);
+
     var buffer: [32]u8 = undefined;
     var out: std.Io.Writer = .fixed(&buffer);
     try when.write(&out);

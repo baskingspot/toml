@@ -1,9 +1,10 @@
-//! TOML 1.0.0 in Zig: a strict parser, a value tree, and a writer.
+//! TOML 1.1.0 in Zig: a strict parser, a value tree, and a writer.
 //!
 //! `parseFromSlice` reads a document into a `Document`: a tree of `Value`s in
 //! one arena. `stringify` writes a tree back out. The parser rejects every
-//! document that breaks TOML 1.0.0, and the writer emits text the parser reads
-//! back to an equal tree.
+//! document that breaks TOML 1.1.0. The writer emits TOML 1.0.0, so a 1.0
+//! parser reads its output, and the parser reads that output back to an equal
+//! tree.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -189,6 +190,153 @@ test "parseFromSliceLeaky writes into the caller's allocator" {
     try testing.expectEqual(@as(i64, 1), document.root.table.get("a").?.integer);
 }
 
+test "an inline table may span lines and hold a comment" {
+    const source =
+        \\tbl = {
+        \\  # a comment between the brace and the first key
+        \\  a = 1,
+        \\  b = [1,
+        \\       2],
+        \\  c = {
+        \\    d = 2,
+        \\  },
+        \\}
+    ;
+    var document = switch (try parseFromSlice(testing.allocator, source)) {
+        .failure => |diagnostic| {
+            std.debug.print("{s}\n", .{diagnostic.message()});
+            return error.TestUnexpectedResult;
+        },
+        .document => |document| document,
+    };
+    defer document.deinit();
+
+    const table = document.root.table.get("tbl").?.table;
+    try testing.expectEqual(@as(i64, 1), table.get("a").?.integer);
+    try testing.expectEqual(@as(u32, 2), table.get("b").?.array.count());
+    try testing.expectEqual(@as(i64, 2), table.get("c").?.table.get("d").?.integer);
+}
+
+test "an inline table may end with a comma" {
+    const source =
+        \\one = { a = 1, }
+        \\two = {
+        \\  b = 2,
+        \\}
+    ;
+    var document = switch (try parseFromSlice(testing.allocator, source)) {
+        .failure => |diagnostic| {
+            std.debug.print("{s}\n", .{diagnostic.message()});
+            return error.TestUnexpectedResult;
+        },
+        .document => |document| document,
+    };
+    defer document.deinit();
+
+    const root = document.root.table;
+    try testing.expectEqual(@as(i64, 1), root.get("one").?.table.get("a").?.integer);
+    try testing.expectEqual(@as(i64, 2), root.get("two").?.table.get("b").?.integer);
+}
+
+test "\\e is the escape character" {
+    var document = switch (try parseFromSlice(testing.allocator, "x = \"a\\eb\"\n")) {
+        .failure => |diagnostic| {
+            std.debug.print("{s}\n", .{diagnostic.message()});
+            return error.TestUnexpectedResult;
+        },
+        .document => |document| document,
+    };
+    defer document.deinit();
+    try testing.expectEqualStrings("a\x1bb", document.root.table.get("x").?.string);
+}
+
+test "\\xHH is a codepoint up to 255" {
+    const source = "x = \"\\x41\\xf8\\x00\\x7f\"\n";
+    var document = switch (try parseFromSlice(testing.allocator, source)) {
+        .failure => |diagnostic| {
+            std.debug.print("{s}\n", .{diagnostic.message()});
+            return error.TestUnexpectedResult;
+        },
+        .document => |document| document,
+    };
+    defer document.deinit();
+    // \xHH is a codepoint, not a byte: U+00F8 is two UTF-8 bytes.
+    try testing.expectEqualStrings("A\u{f8}\x00\x7f", document.root.table.get("x").?.string);
+}
+
+test "seconds are optional in times and datetimes" {
+    const source =
+        \\time = 07:32
+        \\local = 1979-05-27T07:32
+        \\offset = 1979-05-27 07:32Z
+        \\fraction = 07:32:00.5
+        \\full = 1979-05-27T07:32:00
+    ;
+    var document = switch (try parseFromSlice(testing.allocator, source)) {
+        .failure => |diagnostic| {
+            std.debug.print("{s}\n", .{diagnostic.message()});
+            return error.TestUnexpectedResult;
+        },
+        .document => |document| document,
+    };
+    defer document.deinit();
+
+    const root = document.root.table;
+    const time = root.get("time").?.datetime;
+    try testing.expectEqual(Datetime.Kind.local_time, time.kind);
+    try testing.expectEqual(@as(u8, 7), time.hour);
+    try testing.expectEqual(@as(u8, 32), time.minute);
+    try testing.expectEqual(@as(u8, 0), time.second);
+
+    const local = root.get("local").?.datetime;
+    try testing.expectEqual(Datetime.Kind.local_datetime, local.kind);
+    try testing.expectEqual(@as(u8, 0), local.second);
+
+    const offset = root.get("offset").?.datetime;
+    try testing.expectEqual(Datetime.Kind.offset, offset.kind);
+    try testing.expectEqual(@as(u8, 0), offset.second);
+    try testing.expectEqual(@as(i16, 0), offset.offset_minutes);
+
+    try testing.expectEqual(@as(u32, 500_000_000), root.get("fraction").?.datetime.nanosecond);
+    try testing.expectEqual(@as(u8, 0), root.get("full").?.datetime.nanosecond);
+}
+
+test "the writer emits TOML 1.0 for every 1.1 feature" {
+    const source =
+        \\esc = "\e"
+        \\hex = "\x68\xe9"
+        \\when = 07:32
+        \\arr = [{a = 1},
+        \\       {b = 2}]
+        \\tbl = {
+        \\  a = 1,
+        \\}
+    ;
+    var document = switch (try parseFromSlice(testing.allocator, source)) {
+        .failure => |diagnostic| {
+            std.debug.print("{s}\n", .{diagnostic.message()});
+            return error.TestUnexpectedResult;
+        },
+        .document => |document| document,
+    };
+    defer document.deinit();
+
+    var buffer: [512]u8 = undefined;
+    var out: std.Io.Writer = .fixed(&buffer);
+    try stringify(document.root, &out);
+
+    // No `\e`, no `\xHH`, seconds always present, and the inline table in
+    // the array stays on one line. A TOML 1.0 parser reads every line.
+    try testing.expectEqualStrings(
+        "esc = \"\\u001b\"\n" ++
+            "hex = \"h\u{e9}\"\n" ++
+            "when = 07:32:00\n" ++
+            "arr = [{a = 1}, {b = 2}]\n" ++
+            "\n[tbl]\na = 1\n",
+        out.buffered(),
+    );
+}
+
 test "a number literal past the stack buffer still parses" {
     // 402 bytes with underscores: `cleanNumber` has to take an arena buffer.
     const source = "x = 1." ++ ("0_" ** 200) ++ "5\n";
@@ -223,6 +371,9 @@ test "fuzz: the parser survives arbitrary bytes" {
         "[[a]]\nb = \"x\"\n",
         "a = { b = [1, 2, \"three\"] }\n",
         "a = \"\"\"multi\nline\"\"\"\n",
+        "tbl = {\n  a = 1,\n}\n",
+        "esc = \"\\e and \\x41\"\n",
+        "t = 07:32\n",
     } });
 }
 

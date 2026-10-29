@@ -2,19 +2,24 @@
 title = "toml"
 +++
 
-TOML 1.0.0 in Zig: a strict parser, a value tree, and a writer.
+TOML 1.1.0 in Zig: a strict parser, a value tree, and a writer.
 
-Zig has no TOML parser in `std`. This one reads the whole of TOML 1.0.0 into a
+Zig has no TOML parser in `std`. This one reads the whole of TOML 1.1.0 into a
 tree you can walk, and writes that tree back out as TOML. It rejects what the
 grammar rejects, including the cases a shortcut gets wrong: a table defined
 twice, a dotted key that reaches into a table its own header defined, and an
 inline table extended after its closing brace.
 
+Reads 1.1, writes 1.0. The writer never emits the 1.1-only syntax, so any
+TOML 1.0 parser accepts its output: inline tables stay on one line, `\e` is
+written as `\u001b`, `\xHH` as the codepoint in UTF-8, and a time without
+seconds gets `:00`.
+
 - [Reading a document](#reading-a-document): `parseFromSlice` returns a `Document` or a `Diagnostic` with a byte span, a line, and a column.
 - [The value tree](#the-value-tree): `Value`, `Table`, and `Array`, with tables in document order and all four datetime forms.
-- [Writing a document](#writing-a-document): `stringify` emits TOML that parses back to an equal tree, quoting keys only when the bare form cannot carry them.
-- [Conformance](#conformance): 208 valid and 509 invalid documents from `toml-test`, run by `just test`.
-- [Limits](#limits): a 1.0.0 parser, and a writer that drops comments and extra whitespace.
+- [Writing a document](#writing-a-document): `stringify` emits TOML 1.0.0 that parses back to an equal tree, quoting keys only when the bare form cannot carry them.
+- [Conformance](#conformance): 218 valid and 502 invalid documents from the `toml-test` 1.1.0 list, run by `just test`.
+- [Limits](#limits): a writer that drops comments and extra whitespace, and stays inside TOML 1.0.0.
 
 The [API reference](api/) documents every public symbol.
 
@@ -217,7 +222,8 @@ TOML separates four datetime forms, and `Datetime.kind` keeps them apart:
 - `.local_date`: a calendar date.
 - `.local_time`: a clock time.
 
-Seconds are always present, as TOML 1.0.0 requires. Fractional seconds keep
+Seconds are optional on input, as TOML 1.1.0 allows; an omitted second counts
+as zero, and `Datetime.write` always emits one. Fractional seconds keep
 nanoseconds; digits past the ninth are truncated, not rounded.
 
 `Datetime.parse` reads the text of a value, and `Datetime.write` emits it:
@@ -225,6 +231,10 @@ nanoseconds; digits past the ninth are truncated, not rounded.
 ```zig
 const when = try toml.Datetime.parse("1979-05-27T07:32:00Z");
 try std.testing.expectEqual(@as(i16, 0), when.offset_minutes);
+
+// The seconds may be omitted on input.
+const minute = try toml.Datetime.parse("07:32");
+try std.testing.expectEqual(@as(u8, 0), minute.second);
 
 var buffer: [32]u8 = undefined;
 var out: std.Io.Writer = .fixed(&buffer);
@@ -251,6 +261,9 @@ try std.testing.expect(toml.Value.eql(first.root, second.root));
 value must be a table; anything else is `error.NotATable`. A full writer is
 `error.WriteFailed`.
 
+The output is TOML 1.0.0, so a 1.0 parser reads a tree that came from a 1.1.0
+document.
+
 ```zig
 var buffer: [4096]u8 = undefined;
 var out: std.Io.Writer = .fixed(&buffer);
@@ -263,7 +276,8 @@ const text = out.buffered();
 The output parses back to an equal tree. In particular:
 
 - Integers stay integers, floats keep their value, and datetimes keep their
-  kind and offset.
+  kind, their offset, and their nanoseconds. A time without seconds is written
+  with `:00`.
 - An array of tables stays an array of tables: the writer emits `[[name]]`
   headers for it, so a second parse gives the same array kind.
 - Keys stay bare when they match `[A-Za-z0-9_-]` and are quoted otherwise.
@@ -278,7 +292,8 @@ with these differences:
 - A table's own keys are written before its sub-tables, because a header opens
   a new table and cannot be undone. The key order within each group is kept.
 - Strings are written as single-line basic strings, with control characters
-  escaped.
+  escaped as `\u00XX`. `\e` becomes `\u001b`, and `\xHH` becomes the
+  codepoint in UTF-8, so neither 1.1 escape appears in the output.
 - Datetimes are written with `T`, with `Z` for a zero offset, and without
   trailing zeros in the fraction.
 - Floats are written with the shortest decimal that reads back to the same
@@ -291,11 +306,11 @@ with these differences:
 Conformance is measured against [`toml-test`](https://github.com/toml-lang/toml-test),
 the language-agnostic conformance suite for TOML implementations. The vendored
 copy in `test/toml-test/` is exactly the file list in its
-`tests/files-toml-1.0.0`, so it is the 1.0.0 suite and not the 1.1 one.
+`tests/files-toml-1.1.0`, so it is the 1.1.0 suite.
 
-- 208 valid documents, each compared value by value against its tagged-JSON
+- 218 valid documents, each compared value by value against its tagged-JSON
   expectation.
-- 509 invalid documents, each rejected with a diagnostic that has a position
+- 502 invalid documents, each rejected with a diagnostic that has a position
   and a message.
 - Every valid document is also parsed, written, and parsed again. The second
   tree must equal the first, and writing it again must produce the same text.
@@ -308,6 +323,8 @@ The invalid half is where the parser earns its keep. It includes:
 
 - Table rules: a header twice, a dotted key that adds to a header's table, an
   inline table extended after its brace, `[[x]]` against a value array.
+- The 1.1 corners: a lone carriage return in a multi-line string, and a comma
+  with no key before or after it.
 - Strings: raw control characters, bad escapes, unclosed delimiters, a
   multi-line string used as a key.
 - Numbers: leading zeros, misplaced underscores, a value like `1.2.3`, an
@@ -329,11 +346,13 @@ just fuzz 1M
 
 # Limits
 
-## Not TOML 1.1
+## The writer is TOML 1.0.0
 
-This is a TOML 1.0.0 parser, and the syntax additions in 1.1 are rejected:
-`\e` and `\xHH` escapes, a time without seconds, and a newline or a trailing
-comma inside an inline table.
+`stringify` emits the subset any 1.0 parser reads, whatever version the tree
+came from. Inline tables stay on one line, `\e` is written as `\u001b`,
+`\xHH` as the codepoint in UTF-8, and every time carries its seconds. The
+cost is only in how a document looks after a write; the tree keeps every
+value.
 
 ## No comments in the tree
 
