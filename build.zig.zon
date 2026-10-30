@@ -3,7 +3,15 @@
     .version = "0.1.0",
     .fingerprint = 0x12c55c539332fead, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{},
+    .dependencies = .{
+        // The test runner. Lazy: only the root build uses it, and build.zig
+        // returns early for a consumer.
+        .testingx = .{
+            .url = "https://baskingspot.dev/testingx/v0.2.0.tar.gz",
+            .hash = "testingx-0.2.0-ib95-5lNAwA8WZQH6Q6eDm2hgfC3ixFJuhkOrR8gcZAm",
+            .lazy = true,
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",
