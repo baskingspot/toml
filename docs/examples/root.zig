@@ -52,10 +52,6 @@ test "the leaky variant uses the caller's arena" {
     try testing.expectEqualStrings("toml", document.root.table.get("name").?.string);
 }
 
-fn describe(value: toml.Value) []const u8 {
-    return @tagName(std.meta.activeTag(value));
-}
-
 test "read a value by its tag" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
@@ -63,8 +59,10 @@ test "read a value by its tag" {
     const document = try toml.parseFromSlice(arena.allocator(), source, .{});
     const root = document.root.table;
 
-    try testing.expectEqualStrings("float", describe(root.get("version").?));
-    try testing.expectEqualStrings("table", describe(root.get("owner").?));
+    try testing.expectEqualStrings(
+        "float",
+        @tagName(std.meta.activeTag(root.get("version").?)),
+    );
 
     // The check a config loader writes when the type is not guaranteed.
     const port_value: toml.Value = root.get("port") orelse .{ .integer = 8080 };

@@ -143,21 +143,11 @@ const document = try toml.parseFromSliceLeaky(arena.allocator(), source, .{});
 
 ## Values
 
-`Value` is a tagged union. Switch on it to read a value:
-
-```zig
-fn describe(value: toml.Value) []const u8 {
-    return switch (value) {
-        .string => "string",
-        .integer => "integer",
-        .float => "float",
-        .boolean => "boolean",
-        .datetime => "datetime",
-        .array => "array",
-        .table => "table",
-    };
-}
-```
+`Value` is a tagged union. Switch on it and capture the payload to read a
+value: `string` is `[]const u8`, `integer` is `i64`, `float` is `f64`,
+`boolean` is `bool`, `datetime` is `Datetime`, `array` is `*Array`, and
+`table` is `*Table`. When the arm's name is all you need,
+`@tagName(std.meta.activeTag(value))` returns it.
 
 Reading the wrong field of a union panics in safe modes. When the type is not
 guaranteed, check the tag first:
