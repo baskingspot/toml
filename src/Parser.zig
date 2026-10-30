@@ -32,17 +32,17 @@ const max_depth = 128;
 const max_number_len = 256;
 
 source: []const u8,
-pos: usize = 0,
-line: u32 = 1,
-column: u32 = 1,
+pos: usize,
+line: u32,
+column: u32,
 allocator: Allocator,
-root: *Table = undefined,
-current: *Table = undefined,
+root: *Table,
+current: *Table,
 /// The caller's struct, when it passed one. Written in place on failure.
-diagnostics: ?*Diagnostics = null,
+diagnostics: ?*Diagnostics,
 /// Stands in when the caller passed none, so the failure path has one shape.
-fallback: Diagnostics = .{},
-depth: u32 = 0,
+fallback: Diagnostics,
+depth: u32,
 
 /// A position to report errors against, taken before the bytes are read.
 const Mark = struct {
@@ -57,8 +57,15 @@ const Mark = struct {
 pub fn init(allocator: Allocator, source: []const u8, diagnostics: ?*Diagnostics) Parser {
     return .{
         .source = source,
+        .pos = 0,
+        .line = 1,
+        .column = 1,
         .allocator = allocator,
+        .root = undefined,
+        .current = undefined,
         .diagnostics = diagnostics,
+        .fallback = .empty,
+        .depth = 0,
     };
 }
 
@@ -81,7 +88,7 @@ pub fn parse(self: *Parser) Error!Value {
     try self.checkUtf8();
     if (mem.startsWith(u8, self.source, "\xEF\xBB\xBF")) self.advanceBy(3);
 
-    self.root = try self.newTable(.{});
+    self.root = try self.newTable();
     self.current = self.root;
     try self.parseDocument();
     return .{ .table = self.root };
@@ -184,7 +191,8 @@ fn resolveHeader(
                         .{ last, last },
                     );
                 }
-                const element = try self.newTable(.{ .header = true });
+                const element = try self.newTable();
+                element.flags.header = true;
                 try array.items.append(self.allocator, .{ .table = element });
                 return element;
             },
@@ -194,13 +202,15 @@ fn resolveHeader(
 
     if (is_array) {
         const array = try self.allocator.create(Array);
-        array.* = .{ .kind = .tables };
-        const element = try self.newTable(.{ .header = true });
+        array.* = .init(.tables);
+        const element = try self.newTable();
+        element.flags.header = true;
         try array.items.append(self.allocator, .{ .table = element });
         try table.entries.put(self.allocator, last, .{ .array = array });
         return element;
     }
-    const created = try self.newTable(.{ .header = true });
+    const created = try self.newTable();
+    created.flags.header = true;
     try table.entries.put(self.allocator, last, .{ .table = created });
     return created;
 }
@@ -225,7 +235,8 @@ fn descendHeader(self: *Parser, table: *Table, segment: []const u8, mark: Mark) 
             else => return self.failAt(mark, "`{s}` is a value, not a table", .{segment}),
         }
     }
-    const child = try self.newTable(.{ .implicit = true });
+    const child = try self.newTable();
+    child.flags.implicit = true;
     try table.entries.put(self.allocator, segment, .{ .table = child });
     return child;
 }
@@ -291,7 +302,8 @@ fn insert(
                 ),
             }
         } else {
-            const child = try self.newTable(.{ .dotted = true });
+            const child = try self.newTable();
+            child.flags.dotted = true;
             try target.entries.put(self.allocator, segment, .{ .table = child });
             target = child;
         }
@@ -398,7 +410,7 @@ fn parseArray(self: *Parser) Error!*Array {
     const mark = self.here();
     _ = self.advance();
     const array = try self.allocator.create(Array);
-    array.* = .{};
+    array.* = .init(.list);
     try self.enter(mark);
     defer self.depth -= 1;
 
@@ -431,7 +443,7 @@ fn parseArray(self: *Parser) Error!*Array {
 fn parseInlineTable(self: *Parser) Error!*Table {
     const mark = self.here();
     _ = self.advance();
-    const table = try self.newTable(.{});
+    const table = try self.newTable();
     try self.enter(mark);
     defer self.depth -= 1;
 
@@ -1133,9 +1145,9 @@ fn failUnexpected(self: *Parser, mark: Mark, comptime context: []const u8) Error
     return self.failAt(mark, context ++ ": found `{c}`", .{c});
 }
 
-fn newTable(self: *Parser, flags: Table.Flags) Error!*Table {
+fn newTable(self: *Parser) Error!*Table {
     const table = try self.allocator.create(Table);
-    table.* = .{ .flags = flags };
+    table.* = .empty;
     return table;
 }
 

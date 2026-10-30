@@ -77,22 +77,34 @@ const EntryMap = std.array_hash_map.String(Value);
 /// A TOML table: keys in the order the document declared them.
 pub const Table = struct {
     /// The entries, keyed by the unescaped key text.
-    entries: EntryMap = .empty,
+    entries: EntryMap,
     /// Parser bookkeeping. Readers and the writer ignore it.
-    flags: Flags = .{},
+    flags: Flags,
+
+    /// An empty table: no entries, and no declaration behind it.
+    pub const empty: Table = .{ .entries = .empty, .flags = .zero };
 
     /// What the parser remembers about how a table was declared.
     pub const Flags = packed struct(u8) {
         /// A `[header]` defined the table.
-        header: bool = false,
+        header: bool,
         /// A dotted key created the table as an intermediate step.
-        dotted: bool = false,
+        dotted: bool,
         /// A header created the table as an intermediate step.
-        implicit: bool = false,
+        implicit: bool,
         /// An inline table, or a table inside one: nothing may be added after
         /// the closing brace.
-        sealed: bool = false,
-        _: u4 = 0,
+        sealed: bool,
+        _: u4,
+
+        /// No flag set: no declaration has touched the table.
+        pub const zero: Flags = .{
+            .header = false,
+            .dotted = false,
+            .implicit = false,
+            .sealed = false,
+            ._ = 0,
+        };
     };
 
     /// The value stored under `key`, or null.
@@ -130,9 +142,9 @@ pub const Table = struct {
 
 /// A TOML array: values in document order.
 pub const Array = struct {
-    items: std.ArrayList(Value) = .empty,
+    items: std.ArrayList(Value),
     /// How the document declared the array.
-    kind: Kind = .list,
+    kind: Kind,
 
     pub const Kind = enum {
         /// `a = [ ... ]`: a value array.
@@ -140,6 +152,11 @@ pub const Array = struct {
         /// `[[a]]` headers: an array of tables.
         tables,
     };
+
+    /// An empty array of `kind`.
+    pub fn init(kind: Kind) Array {
+        return .{ .items = .empty, .kind = kind };
+    }
 
     /// The number of elements.
     pub fn count(self: Array) u32 {
@@ -158,12 +175,13 @@ test "eql ignores key order and flags" {
     const a = arena.allocator();
 
     const first = try a.create(Table);
-    first.* = .{ .flags = .{ .header = true } };
+    first.* = .empty;
+    first.flags.header = true;
     try first.entries.put(a, "x", .{ .integer = 1 });
     try first.entries.put(a, "y", .{ .integer = 2 });
 
     const second = try a.create(Table);
-    second.* = .{};
+    second.* = .empty;
     try second.entries.put(a, "y", .{ .integer = 2 });
     try second.entries.put(a, "x", .{ .integer = 1 });
 
@@ -179,9 +197,9 @@ test "eql distinguishes array kinds" {
     const a = arena.allocator();
 
     const list = try a.create(Array);
-    list.* = .{ .kind = .list };
+    list.* = .init(.list);
     const tables = try a.create(Array);
-    tables.* = .{ .kind = .tables };
+    tables.* = .init(.tables);
 
     try testing.expect(!Value.eql(.{ .array = list }, .{ .array = tables }));
 }

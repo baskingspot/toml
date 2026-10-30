@@ -121,7 +121,7 @@ test "the valid corpus round-trips through the writer" {
     for (entries) |entry| {
         if (!entry.valid) continue;
         const source = try readFile(allocator, entry.path);
-        var first = toml.parseFromSlice(allocator, source, .{}) catch |err| switch (err) {
+        var first = toml.parseFromSlice(allocator, source, .init) catch |err| switch (err) {
             error.OutOfMemory => return err,
             error.SyntaxError => {
                 try report(entry.path, null, "it did not parse", .{});

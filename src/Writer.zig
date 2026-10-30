@@ -20,13 +20,13 @@ pub const Error = Io.Writer.Error || error{ NotATable, NestingTooDeep };
 const max_path = 128;
 
 writer: *Io.Writer,
-path: [max_path][]const u8 = undefined,
-depth: u32 = 0,
+path: [max_path][]const u8,
+depth: u32,
 /// Whether anything was written, so a header knows to put a blank line first.
-wrote: bool = false,
+wrote: bool,
 
 pub fn init(writer: *Io.Writer) Writer {
-    return .{ .writer = writer };
+    return .{ .writer = writer, .path = undefined, .depth = 0, .wrote = false };
 }
 
 /// Write `value` as a TOML document. It must be a table.
@@ -195,11 +195,11 @@ test "stringify writes values before sub-tables" {
     const a = arena.allocator();
 
     const child = try a.create(Table);
-    child.* = .{};
+    child.* = .empty;
     try child.put(a, "x", .{ .integer = 1 });
 
     const root = try a.create(Table);
-    root.* = .{};
+    root.* = .empty;
     try root.put(a, "top", .{ .boolean = true });
     try root.put(a, "child", .{ .table = child });
 
@@ -216,7 +216,7 @@ test "stringify quotes keys that the bare form cannot carry" {
     const a = arena.allocator();
 
     const root = try a.create(Table);
-    root.* = .{};
+    root.* = .empty;
     try root.put(a, "", .{ .integer = 1 });
     try root.put(a, "a.b", .{ .integer = 2 });
     try root.put(a, "with space", .{ .integer = 3 });

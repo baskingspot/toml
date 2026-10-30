@@ -18,7 +18,8 @@ The conformance corpus in `test/toml-test/` is vendored from `toml-lang/toml-tes
 
 - Commit messages are one line, `area: summary`, and every commit is signed. Do not rewrite pushed history.
 - Gate commands on their exit codes, and claim only what you ran.
-- Format with `zig fmt` and lint with `ziglint`. `just fmt` and `just lint` run both.
+- Format with `zig fmt`; lint with `ziglint`. `just fmt` and `just lint` run both.
+- Constructors are named, never a bare `.{}`: a type either carries a `pub const init`/`empty`/`zero` with the defaults spelled out, or a `pub fn init(...)` when there are variables to set. The fields stay required, so a bare `.{}` or a partial literal does not compile. Comptime config is the one exception: an options struct a caller passes to a type constructor keeps its defaults, with `// ast-grep-ignore: public-struct-field-default -- comptime config: call sites override one knob` between its doc comment and its declaration.
 - This repo's GitHub settings come from `baskingspot/.github`, with `just settings`. Do not change them by hand.
 - To graduate the project, follow the `baskingspot-new-repo` skill: logos, a real README, and the audit passing.
 

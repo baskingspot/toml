@@ -28,24 +28,40 @@ pub const Kind = enum {
 };
 
 /// Calendar year, 0 to 9999. Zero on a `local_time`.
-year: u16 = 0,
+year: u16,
 /// Month, 1 to 12. Zero on a `local_time`.
-month: u8 = 0,
+month: u8,
 /// Day of the month, 1 to 31. Zero on a `local_time`.
-day: u8 = 0,
+day: u8,
 /// Hour, 0 to 23. Zero on a `local_date`.
-hour: u8 = 0,
+hour: u8,
 /// Minute, 0 to 59. Zero on a `local_date`.
-minute: u8 = 0,
+minute: u8,
 /// Second, 0 to 60. Sixty is a leap second, which RFC 3339 permits. Zero when
 /// the text omitted the seconds.
-second: u8 = 0,
+second: u8,
 /// Fractional second in nanoseconds, 0 to 999_999_999.
-nanosecond: u32 = 0,
+nanosecond: u32,
 /// Offset from UTC in minutes, negative west of Greenwich. Zero on the local
 /// forms, and on an offset date-time written with `Z`.
-offset_minutes: i16 = 0,
+offset_minutes: i16,
 kind: Kind,
+
+/// A datetime of `kind` with nothing set: no date, the time at midnight,
+/// and no offset.
+pub fn init(kind: Kind) Datetime {
+    return .{
+        .year = 0,
+        .month = 0,
+        .day = 0,
+        .hour = 0,
+        .minute = 0,
+        .second = 0,
+        .nanosecond = 0,
+        .offset_minutes = 0,
+        .kind = kind,
+    };
+}
 
 /// The only failure `scan` and `parse` report: the text is not a datetime.
 pub const Error = error{InvalidDatetime};
@@ -70,16 +86,14 @@ pub fn scan(text: []const u8) Error!?Scanned {
             if (date.len + 1 < text.len and isDigit(text[date.len + 1])) {
                 const t = try scanTime(text[date.len + 1 ..]);
                 const used = date.len + 1 + t.len;
-                var value: Datetime = .{
-                    .kind = .local_datetime,
-                    .year = date.year,
-                    .month = date.month,
-                    .day = date.day,
-                    .hour = t.hour,
-                    .minute = t.minute,
-                    .second = t.second,
-                    .nanosecond = t.nanosecond,
-                };
+                var value: Datetime = .init(.local_datetime);
+                value.year = date.year;
+                value.month = date.month;
+                value.day = date.day;
+                value.hour = t.hour;
+                value.minute = t.minute;
+                value.second = t.second;
+                value.nanosecond = t.nanosecond;
                 if (used < text.len) {
                     switch (text[used]) {
                         'Z', 'z' => {
@@ -98,23 +112,21 @@ pub fn scan(text: []const u8) Error!?Scanned {
                 return .{ .value = value, .len = used };
             }
         }
-        return .{ .value = .{
-            .kind = .local_date,
-            .year = date.year,
-            .month = date.month,
-            .day = date.day,
-        }, .len = date.len };
+        var value: Datetime = .init(.local_date);
+        value.year = date.year;
+        value.month = date.month;
+        value.day = date.day;
+        return .{ .value = value, .len = date.len };
     }
 
     if (startsTime(text)) {
         const t = try scanTime(text);
-        return .{ .value = .{
-            .kind = .local_time,
-            .hour = t.hour,
-            .minute = t.minute,
-            .second = t.second,
-            .nanosecond = t.nanosecond,
-        }, .len = t.len };
+        var value: Datetime = .init(.local_time);
+        value.hour = t.hour;
+        value.minute = t.minute;
+        value.second = t.second;
+        value.nanosecond = t.nanosecond;
+        return .{ .value = value, .len = t.len };
     }
 
     return null;

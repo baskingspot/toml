@@ -17,7 +17,7 @@ const source =
 ;
 
 test "parse a document and look up a value" {
-    var document = try toml.parseFromSlice(testing.allocator, source, .{});
+    var document = try toml.parseFromSlice(testing.allocator, source, .init);
     defer document.deinit();
 
     const root = document.root.table;
@@ -47,7 +47,7 @@ test "the leaky variant uses the caller's arena" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
 
-    const document = try toml.parseFromSliceLeaky(arena.allocator(), source, .{});
+    const document = try toml.parseFromSliceLeaky(arena.allocator(), source, .init);
     try testing.expect(document.arena == null);
     try testing.expectEqualStrings("toml", document.root.table.get("name").?.string);
 }
@@ -56,7 +56,7 @@ test "read a value by its tag" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
 
-    const document = try toml.parseFromSlice(arena.allocator(), source, .{});
+    const document = try toml.parseFromSlice(arena.allocator(), source, .init);
     const root = document.root.table;
 
     try testing.expectEqualStrings(
@@ -81,7 +81,7 @@ test "build a table by hand" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
 
-    var table: toml.Table = .{};
+    var table: toml.Table = .empty;
     try table.put(arena.allocator(), "answer", .{ .integer = 42 });
     try testing.expectError(
         error.DuplicateKey,
@@ -100,7 +100,7 @@ test "walk an array of tables" {
         \\[[products]]
         \\name = "Nail"
     ;
-    const document = try toml.parseFromSlice(arena.allocator(), text, .{});
+    const document = try toml.parseFromSlice(arena.allocator(), text, .init);
     const products = document.root.table.get("products").?.array;
     try testing.expectEqual(toml.Array.Kind.tables, products.kind);
     try testing.expectEqual(@as(u32, 2), products.count());
@@ -125,14 +125,14 @@ test "write a document and read it back" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
 
-    const first = try toml.parseFromSlice(arena.allocator(), source, .{});
+    const first = try toml.parseFromSlice(arena.allocator(), source, .init);
 
     var buffer: [4096]u8 = undefined;
     var out: std.Io.Writer = .fixed(&buffer);
     try toml.stringify(first.root, &out);
     const text = out.buffered();
 
-    const second = try toml.parseFromSlice(arena.allocator(), text, .{});
+    const second = try toml.parseFromSlice(arena.allocator(), text, .init);
     try testing.expect(toml.Value.eql(first.root, second.root));
 }
 

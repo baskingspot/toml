@@ -61,7 +61,7 @@ const source =
     \\login = "matt"
 ;
 
-var document = try toml.parseFromSlice(gpa, source, .{});
+var document = try toml.parseFromSlice(gpa, source, .init);
 defer document.deinit();
 ```
 
@@ -78,13 +78,13 @@ for a document that breaks the grammar, `error.OutOfMemory` for the allocator.
 bytes and returns a `Document`.
 
 ```zig
-var document = try toml.parseFromSlice(gpa, source, .{});
+var document = try toml.parseFromSlice(gpa, source, .init);
 defer document.deinit();
 // document.root is the root table
 ```
 
-`.{}` takes the defaults. The one option is `diagnostics`, a pointer the parser
-fills on `error.SyntaxError`.
+`.init` takes the defaults: no diagnostics, only the error. The one option is
+`diagnostics`, a pointer the parser fills on `error.SyntaxError`.
 
 The source is copied as it is read. You can free it as soon as the call
 returns.
@@ -102,7 +102,7 @@ stays valid after the parse returns. Declare it, pass a pointer, and read it on
 the error path:
 
 ```zig
-var diagnostics: toml.Diagnostics = .{};
+var diagnostics: toml.Diagnostics = .empty;
 var document = toml.parseFromSlice(gpa, source, .{
     .diagnostics = &diagnostics,
 }) catch |err| switch (err) {
@@ -136,7 +136,7 @@ allocator you pass and returns a `Document` whose `arena` field is null, so its
 var arena: std.heap.ArenaAllocator = .init(gpa);
 defer arena.deinit();
 
-const document = try toml.parseFromSliceLeaky(arena.allocator(), source, .{});
+const document = try toml.parseFromSliceLeaky(arena.allocator(), source, .init);
 ```
 
 # The value tree
@@ -180,7 +180,7 @@ To build a tree by hand, create a `Table` and call `Table.put`. It returns
 `error.DuplicateKey` when the key is already there:
 
 ```zig
-var table: toml.Table = .{};
+var table: toml.Table = .empty;
 try table.put(gpa, "answer", .{ .integer = 42 });
 ```
 
