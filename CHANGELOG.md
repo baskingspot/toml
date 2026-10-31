@@ -5,6 +5,8 @@ All notable changes to toml are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-31
+
 ### Changed
 
 - `Document`, `Diagnostics`, `Table`, `Array`, and `Datetime` require every

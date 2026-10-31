@@ -29,7 +29,7 @@ The [API reference](api/) documents every public symbol.
 Add the package to `build.zig.zon`:
 
 ```sh
-zig fetch --save https://baskingspot.dev/toml/v0.1.0.tar.gz
+zig fetch --save https://baskingspot.dev/toml/v0.2.0.tar.gz
 ```
 
 Then wire the module in `build.zig`:
