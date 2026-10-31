@@ -61,7 +61,7 @@ const source =
     \\login = "matt"
 ;
 
-var document = try toml.parseFromSlice(gpa, source, .init);
+var document = try toml.parseFromSlice(gpa, source, .{});
 defer document.deinit();
 ```
 
@@ -78,13 +78,13 @@ for a document that breaks the grammar, `error.OutOfMemory` for the allocator.
 bytes and returns a `Document`.
 
 ```zig
-var document = try toml.parseFromSlice(gpa, source, .init);
+var document = try toml.parseFromSlice(gpa, source, .{});
 defer document.deinit();
 // document.root is the root table
 ```
 
-`.init` takes the defaults: no diagnostics, only the error. The one option is
-`diagnostics`, a pointer the parser fills on `error.SyntaxError`.
+`.{}` takes the defaults. The one option is `diagnostics`, a pointer the parser
+fills on `error.SyntaxError`.
 
 The source is copied as it is read. You can free it as soon as the call
 returns.
@@ -136,7 +136,7 @@ allocator you pass and returns a `Document` whose `arena` field is null, so its
 var arena: std.heap.ArenaAllocator = .init(gpa);
 defer arena.deinit();
 
-const document = try toml.parseFromSliceLeaky(arena.allocator(), source, .init);
+const document = try toml.parseFromSliceLeaky(arena.allocator(), source, .{});
 ```
 
 # The value tree

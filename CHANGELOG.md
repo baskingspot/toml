@@ -7,10 +7,9 @@ All notable changes to toml are recorded here. The format follows
 
 ### Changed
 
-- `ParseOptions`, `Document`, `Diagnostics`, `Table`, `Array`, and `Datetime`
-  require every field, so a bare `.{}` or a partial literal no longer compiles.
-  Pass `ParseOptions.init` to a parse, and build a tree by hand with
-  `Diagnostics.empty`, `Table.empty`, `Array.init(kind)`, and
+- `Document`, `Diagnostics`, `Table`, `Array`, and `Datetime` require every
+  field, so a bare `.{}` or a partial literal no longer compiles. Build a tree
+  by hand with `Diagnostics.empty`, `Table.empty`, `Array.init(kind)`, and
   `Datetime.init(kind)`.
 
 ## [0.1.0] - 2026-10-29

@@ -34,13 +34,11 @@ const Writer = @import("Writer.zig");
 pub const ParseError = Allocator.Error || error{SyntaxError};
 
 /// How to parse a document.
+// ast-grep-ignore: public-struct-field-default -- options bag: call sites override one knob
 pub const ParseOptions = struct {
     /// Filled on `error.SyntaxError`. Untouched when the parse succeeds, and
     /// on `error.OutOfMemory`. Null means the caller wants only the error.
-    diagnostics: ?*Diagnostics,
-
-    /// A parse that reports only the error, with no diagnostics.
-    pub const init: ParseOptions = .{ .diagnostics = null };
+    diagnostics: ?*Diagnostics = null,
 };
 
 /// A parsed document and the memory that holds it.
@@ -121,7 +119,7 @@ test "parse a small document" {
         \\login = "matt"
         \\joined = 1979-05-27T07:32:00Z
     ;
-    var document = try parseFromSlice(testing.allocator, source, .init);
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     const root = document.root.table;
@@ -164,14 +162,14 @@ test "a successful parse leaves the diagnostics alone" {
 test "duplicate keys are rejected" {
     try testing.expectError(
         error.SyntaxError,
-        parseFromSlice(testing.allocator, "a = 1\na = 2\n", .init),
+        parseFromSlice(testing.allocator, "a = 1\na = 2\n", .{}),
     );
 }
 
 test "the document does not borrow the source" {
     const allocator = testing.allocator;
     const source = try allocator.dupe(u8, "key = \"value\"\n");
-    var document = try parseFromSlice(allocator, source, .init);
+    var document = try parseFromSlice(allocator, source, .{});
     allocator.free(source);
     defer document.deinit();
     try testing.expectEqualStrings("value", document.root.table.get("key").?.string);
@@ -180,7 +178,7 @@ test "the document does not borrow the source" {
 test "parseFromSliceLeaky writes into the caller's allocator" {
     var arena: ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
-    const document = try parseFromSliceLeaky(arena.allocator(), "a = 1\n", .init);
+    const document = try parseFromSliceLeaky(arena.allocator(), "a = 1\n", .{});
     try testing.expect(document.arena == null);
     try testing.expectEqual(@as(i64, 1), document.root.table.get("a").?.integer);
 }
@@ -197,7 +195,7 @@ test "an inline table may span lines and hold a comment" {
         \\  },
         \\}
     ;
-    var document = try parseFromSlice(testing.allocator, source, .init);
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     const table = document.root.table.get("tbl").?.table;
@@ -213,7 +211,7 @@ test "an inline table may end with a comma" {
         \\  b = 2,
         \\}
     ;
-    var document = try parseFromSlice(testing.allocator, source, .init);
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     const root = document.root.table;
@@ -222,14 +220,14 @@ test "an inline table may end with a comma" {
 }
 
 test "\\e is the escape character" {
-    var document = try parseFromSlice(testing.allocator, "x = \"a\\eb\"\n", .init);
+    var document = try parseFromSlice(testing.allocator, "x = \"a\\eb\"\n", .{});
     defer document.deinit();
     try testing.expectEqualStrings("a\x1bb", document.root.table.get("x").?.string);
 }
 
 test "\\xHH is a codepoint up to 255" {
     const source = "x = \"\\x41\\xf8\\x00\\x7f\"\n";
-    var document = try parseFromSlice(testing.allocator, source, .init);
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
     // \xHH is a codepoint, not a byte: U+00F8 is two UTF-8 bytes.
     try testing.expectEqualStrings("A\u{f8}\x00\x7f", document.root.table.get("x").?.string);
@@ -243,7 +241,7 @@ test "seconds are optional in times and datetimes" {
         \\fraction = 07:32:00.5
         \\full = 1979-05-27T07:32:00
     ;
-    var document = try parseFromSlice(testing.allocator, source, .init);
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     const root = document.root.table;
@@ -277,7 +275,7 @@ test "the writer emits TOML 1.0 for every 1.1 feature" {
         \\  a = 1,
         \\}
     ;
-    var document = try parseFromSlice(testing.allocator, source, .init);
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
 
     var buffer: [512]u8 = undefined;
@@ -299,7 +297,7 @@ test "the writer emits TOML 1.0 for every 1.1 feature" {
 test "a number literal past the stack buffer still parses" {
     // 402 bytes with underscores: `cleanNumber` has to take an arena buffer.
     const source = "x = 1." ++ ("0_" ** 200) ++ "5\n";
-    var document = try parseFromSlice(testing.allocator, source, .init);
+    var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
     try testing.expectEqual(@as(f64, 1.0), document.root.table.get("x").?.float);
 }
@@ -312,13 +310,13 @@ test "a key path deeper than the limit is a diagnostic" {
     try out.writeAll(" = 1\n");
     try testing.expectError(
         error.SyntaxError,
-        parseFromSlice(testing.allocator, out.buffered(), .init),
+        parseFromSlice(testing.allocator, out.buffered(), .{}),
     );
 }
 
 test "an array nested past the limit is a diagnostic" {
     const source = "x = " ++ ("[" ** 129) ++ "1" ++ ("]" ** 129);
-    try testing.expectError(error.SyntaxError, parseFromSlice(testing.allocator, source, .init));
+    try testing.expectError(error.SyntaxError, parseFromSlice(testing.allocator, source, .{}));
 }
 
 test "fuzz: the parser survives arbitrary bytes" {
@@ -340,14 +338,14 @@ fn fuzzParse(_: void, smith: *testing.Smith) anyerror!void {
     var buffer: [4096]u8 = undefined;
     const source = buffer[0..smith.slice(&buffer)];
 
-    var first = parseFromSlice(testing.allocator, source, .init) catch return;
+    var first = parseFromSlice(testing.allocator, source, .{}) catch return;
     defer first.deinit();
 
     var output: Io.Writer.Allocating = .init(testing.allocator);
     defer output.deinit();
     try stringify(first.root, &output.writer);
 
-    var second = parseFromSlice(testing.allocator, output.written(), .init) catch
+    var second = parseFromSlice(testing.allocator, output.written(), .{}) catch
         return error.FuzzRoundTripRejected;
     defer second.deinit();
     if (!Value.eql(first.root, second.root)) return error.FuzzRoundTripMismatch;
@@ -368,14 +366,14 @@ test "writer round-trips a document" {
         \\width = 1.5
         \\tags = ["a", "b"]
     ;
-    var first = try parseFromSlice(testing.allocator, source, .init);
+    var first = try parseFromSlice(testing.allocator, source, .{});
     defer first.deinit();
 
     var buffer: [1024]u8 = undefined;
     var out: Io.Writer = .fixed(&buffer);
     try stringify(first.root, &out);
 
-    var second = try parseFromSlice(testing.allocator, out.buffered(), .init);
+    var second = try parseFromSlice(testing.allocator, out.buffered(), .{});
     defer second.deinit();
 
     try testing.expect(Value.eql(first.root, second.root));

@@ -18,7 +18,7 @@ written as `\u001b`, `\xHH` as the codepoint in UTF-8, and a time without
 seconds gets `:00`.
 
 ```zig
-var document = try toml.parseFromSlice(gpa, source, .init);
+var document = try toml.parseFromSlice(gpa, source, .{});
 defer document.deinit();
 ```
 
