@@ -31,10 +31,9 @@ pub fn build(b: *std.Build) void {
         .test_runner = test_runner,
     });
     const run_mod_tests = b.addRunArtifact(mod_tests);
-    run_mod_tests.addArg(b.fmt("--seed=0x{x}", .{b.graph.random_seed}));
     // Only the module suite takes runner flags: a filter that matches none of
     // the examples' tests would fail that binary.
-    if (b.args) |args| run_mod_tests.addArgs(args);
+    passthruArgs(b, run_mod_tests);
     test_step.dependOn(&run_mod_tests.step);
 
     // The corpus tests read `test/toml-test` at run time, so the runner's
@@ -50,7 +49,6 @@ pub fn build(b: *std.Build) void {
         .test_runner = test_runner,
     });
     const run_corpus_tests = b.addRunArtifact(corpus_tests);
-    run_corpus_tests.addArg(b.fmt("--seed=0x{x}", .{b.graph.random_seed}));
     run_corpus_tests.setCwd(b.path("."));
     test_step.dependOn(&run_corpus_tests.step);
 
@@ -68,7 +66,6 @@ pub fn build(b: *std.Build) void {
         .test_runner = test_runner,
     });
     const run_example_tests = b.addRunArtifact(example_tests);
-    run_example_tests.addArg(b.fmt("--seed=0x{x}", .{b.graph.random_seed}));
     test_step.dependOn(&run_example_tests.step);
 
     // Fuzzing needs the built-in runner: testingx's main rejects fuzz mode
@@ -79,4 +76,14 @@ pub fn build(b: *std.Build) void {
     run_fuzz_tests.has_side_effects = true;
     const fuzz_step = b.step("fuzz", "Fuzz the parser (built-in test runner)");
     fuzz_step.dependOn(&run_fuzz_tests.step);
+}
+
+/// `b.args` (removed in Zig 0.17) and `Run.addPassthruArgs` are the same
+/// feature on either side of the split. Probe the build API, not the version.
+fn passthruArgs(b: *std.Build, run: *std.Build.Step.Run) void {
+    if (comptime @hasDecl(std.Build.Step.Run, "addPassthruArgs")) {
+        run.addPassthruArgs();
+    } else if (b.args) |args| {
+        run.addArgs(args);
+    }
 }

@@ -8,14 +8,17 @@ TOML 1.1 in Zig: a strict parser, a value tree, and a writer. The parser reads 1
 
 ## Environment
 
-Zig 0.16 only. The flake is the tool contract, from `baskingspot/nix`: `nix develop` provides Zig, `ziglint`, `baskingspot-lint`, and the base tools, and nothing comes from the system PATH. The justfile is the command interface: `just test`, `just lint`, `just ci`. Run `just fmt` before you commit.
+Zig 0.16 and 0.17. The flake is the tool contract, from `baskingspot/nix`: `nix develop` is the current stable, Zig 0.17, and `nix develop .#zig-old` is Zig 0.16. Both provide `ziglint`, `baskingspot-lint`, and the base tools, and nothing comes from the system PATH. The justfile is the command interface: `just test`, `just check`, `just lint`, `just ci`. CI runs `just ci` on the default shell and `just check` on `zig-old`. Run `just fmt` before you commit.
 
-Tests run under testingx, the org's test runner, a lazy dependency. Every `addTest` carries `.test_runner = .{ .path = dep.path("src/runner.zig"), .mode = .simple }` and a `--seed` argument. Fuzz mode stays on the built-in runner, because testingx rejects it. Do not re-add the built-in runner to the test steps.
+Tests run under testingx, the org's test runner, a lazy dependency. Every `addTest` carries `.test_runner = .{ .path = dep.path("src/runner.zig"), .mode = .simple }`; the runner picks and prints its own seed. Fuzz mode stays on the built-in runner, because testingx rejects it. Do not re-add the built-in runner to the test steps.
+
+Version shims live in `src/compat.zig`. Do not write `@intFromEnum`, `@enumFromInt`, or `**` outside it: 0.17's `zig fmt` migrates the first two, and 0.17 removed the third. The `// zig fmt: off` block is what keeps a 0.17 format from breaking the 0.16 build.
 
 The conformance corpus in `test/toml-test/` is vendored from `toml-lang/toml-test` and must not be edited to make a test pass; `THIRD_PARTY.md` records the commit. `just test` runs the corpus, `just fuzz` runs the parser fuzz target.
 
 ## Rules
 
+- Lint with `ziglint-0-16`, not `ziglint`: the wrapper points ziglint at the 0.16 std, so 0.17-only deprecations do not fire while 0.16 is supported.
 - Commit messages are one line, `area: summary`, and every commit is signed. Do not rewrite pushed history.
 - Gate commands on their exit codes, and claim only what you ran.
 - Format with `zig fmt`; lint with `ziglint` and `baskingspot-lint`, which runs the org's shared ast-grep rules. `just fmt` formats and `just lint` lints.

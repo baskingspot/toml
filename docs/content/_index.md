@@ -39,7 +39,7 @@ const toml = b.dependency("toml", .{ .target = target, .optimize = optimize });
 exe.root_module.addImport("toml", toml.module("toml"));
 ```
 
-`toml` builds with Zig 0.16 only.
+`toml` builds with Zig 0.16 and 0.17.
 
 ## Import it
 

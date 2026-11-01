@@ -1,6 +1,7 @@
 //! TOML text for a value tree.
 
 const std = @import("std");
+const compat = @import("compat.zig");
 const testing = std.testing;
 const Io = std.Io;
 const math = std.math;
@@ -161,7 +162,7 @@ fn writeFloat(self: *Writer, number: f64) Error!void {
     // it prints whole numbers with no fractional part, which TOML would read
     // as an integer.
     var buffer: [512]u8 = undefined;
-    const text = std.fmt.bufPrint(&buffer, "{d}", .{number}) catch {
+    const text = compat.bufPrint(&buffer, "{d}", .{number}) catch {
         // The buffer holds every decimal an f64 can produce; scientific
         // notation is the fallback that cannot overflow it.
         return self.writer.print("{e}", .{number});

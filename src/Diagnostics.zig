@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const testing = std.testing;
+const compat = @import("compat.zig");
 
 const Diagnostics = @This();
 
@@ -47,7 +48,7 @@ pub fn message(self: *const Diagnostics) []const u8 {
 /// Render a message into the diagnostic, truncating on a character boundary
 /// when it does not fit.
 pub fn setMessage(self: *Diagnostics, comptime fmt: []const u8, args: anytype) void {
-    const text = std.fmt.bufPrint(&self.buf, fmt, args) catch {
+    const text = compat.bufPrint(&self.buf, fmt, args) catch {
         // `bufPrint` leaves a partial message on overflow. Cut it back to a
         // UTF-8 boundary so the caller can print it without mojibake.
         var n: usize = self.buf.len;
@@ -61,7 +62,7 @@ pub fn setMessage(self: *Diagnostics, comptime fmt: []const u8, args: anytype) v
 
 test "message truncates on a character boundary" {
     var d: Diagnostics = .empty;
-    d.setMessage("é{s}", .{"é" ** 100});
+    d.setMessage("é{s}", .{compat.repeatString("é", 100)});
     const text = d.message();
     try testing.expect(text.len < 127);
     try testing.expect(std.unicode.utf8ValidateSlice(text));
