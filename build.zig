@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) void {
     const run_mod_tests = b.addRunArtifact(mod_tests);
     // Only the module suite takes runner flags: a filter that matches none of
     // the examples' tests would fail that binary.
-    passthruArgs(b, run_mod_tests);
+    run_mod_tests.addPassthruArgs();
     test_step.dependOn(&run_mod_tests.step);
 
     // The corpus tests read `test/toml-test` at run time, so the runner's
@@ -76,14 +76,4 @@ pub fn build(b: *std.Build) void {
     run_fuzz_tests.has_side_effects = true;
     const fuzz_step = b.step("fuzz", "Fuzz the parser (built-in test runner)");
     fuzz_step.dependOn(&run_fuzz_tests.step);
-}
-
-/// `b.args` (removed in Zig 0.17) and `Run.addPassthruArgs` are the same
-/// feature on either side of the split. Probe the build API, not the version.
-fn passthruArgs(b: *std.Build, run: *std.Build.Step.Run) void {
-    if (comptime @hasDecl(std.Build.Step.Run, "addPassthruArgs")) {
-        run.addPassthruArgs();
-    } else if (b.args) |args| {
-        run.addArgs(args);
-    }
 }

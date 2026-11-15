@@ -2,7 +2,7 @@
     .name = .toml,
     .version = "0.2.1",
     .fingerprint = 0x12c55c539332fead, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         // The test runner. Lazy: only the root build uses it, and build.zig
         // returns early for a consumer.

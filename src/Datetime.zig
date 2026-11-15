@@ -10,7 +10,6 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const testing = std.testing;
-const compat = @import("compat.zig");
 const Io = std.Io;
 const time = std.time;
 
@@ -310,7 +309,7 @@ fn isDigit(c: u8) bool {
 }
 
 fn daysInMonth(year: u16, month: u8) u8 {
-    const named: time.epoch.Month = compat.enumFromInt(time.epoch.Month, month);
+    const named: time.epoch.Month = @fromBackingInt(@intCast(month));
     return @intCast(time.epoch.getDaysInMonth(year, named));
 }
 

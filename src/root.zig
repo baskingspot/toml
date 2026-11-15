@@ -10,7 +10,6 @@ const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
-const compat = @import("compat.zig");
 const ArenaAllocator = std.heap.ArenaAllocator;
 
 /// An array, with its elements in document order.
@@ -297,7 +296,7 @@ test "the writer emits TOML 1.0 for every 1.1 feature" {
 
 test "a number literal past the stack buffer still parses" {
     // 402 bytes with underscores: `cleanNumber` has to take an arena buffer.
-    const source = "x = 1." ++ compat.repeatString("0_", 200) ++ "5\n";
+    const source = "x = 1." ++ repeat("0_", 200) ++ "5\n";
     var document = try parseFromSlice(testing.allocator, source, .{});
     defer document.deinit();
     try testing.expectEqual(@as(f64, 1.0), document.root.table.get("x").?.float);
@@ -316,7 +315,7 @@ test "a key path deeper than the limit is a diagnostic" {
 }
 
 test "an array nested past the limit is a diagnostic" {
-    const source = "x = " ++ compat.repeatString("[", 129) ++ "1" ++ compat.repeatString("]", 129);
+    const source = "x = " ++ repeat("[", 129) ++ "1" ++ repeat("]", 129);
     try testing.expectError(error.SyntaxError, parseFromSlice(testing.allocator, source, .{}));
 }
 
@@ -378,4 +377,11 @@ test "writer round-trips a document" {
     defer second.deinit();
 
     try testing.expect(Value.eql(first.root, second.root));
+}
+
+/// `s` repeated `n` times. Zig 0.17 removed the `**` array-repeat operator.
+fn repeat(comptime s: []const u8, comptime n: usize) [s.len * n]u8 {
+    var out: [s.len * n]u8 = undefined;
+    for (0..n) |i| @memcpy(out[i * s.len ..][0..s.len], s);
+    return out;
 }

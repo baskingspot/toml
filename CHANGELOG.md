@@ -5,6 +5,11 @@ All notable changes to toml are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- `toml` builds with Zig 0.17 only. `minimum_zig_version` is `0.17.0`, and Zig
+  0.16 is no longer supported.
+
 ## [0.2.1] - 2026-11-02
 
 ### Changed

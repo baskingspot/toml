@@ -10,7 +10,7 @@ default:
 test:
     zig build test --summary all
 
-[doc("Fuzz the parser with an iteration budget, for example `just fuzz 50M`. ReleaseSafe forces the LLVM backend, dodging the 0.16.0 self-hosted-backend bug in Debug fuzz mode (ziglang/zig#30655)")]
+[doc("Fuzz the parser with an iteration budget, for example `just fuzz 50M`. ReleaseSafe forces the LLVM backend, so a run covers far more input than a Debug build")]
 [group("test")]
 fuzz LIMIT="10M":
     zig build fuzz -Doptimize=ReleaseSafe --fuzz={{ LIMIT }}
@@ -18,7 +18,7 @@ fuzz LIMIT="10M":
 [doc("Lint Zig, Nix, Markdown, the workflows, and this justfile: ziglint, the shared ast-grep rules, zig fmt, nix fmt, oxfmt, actionlint, zizmor, and just --fmt")]
 [group("lint")]
 lint:
-    ziglint-0-16
+    ziglint-0-17
     baskingspot-lint src
     zig fmt --check src docs/examples test/corpus.zig build.zig build.zig.zon
     nix fmt -- --ci

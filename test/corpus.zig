@@ -194,7 +194,7 @@ fn readManifest(allocator: std.mem.Allocator) ![]Entry {
 }
 
 fn readFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    const full = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ corpus, path });
+    const full = try allocator.print("{s}/{s}", .{ corpus, path });
     return std.Io.Dir.cwd().readFileAlloc(
         testing.io,
         full,
