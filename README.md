@@ -40,7 +40,7 @@ Not implemented:
 ## Install
 
 ```sh
-zig fetch --save https://baskingspot.dev/toml/v0.2.1.tar.gz
+zig fetch --save https://baskingspot.dev/toml/v0.3.0.tar.gz
 ```
 
 Add the module in `build.zig`:
