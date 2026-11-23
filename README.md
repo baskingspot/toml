@@ -22,7 +22,7 @@ var document = try toml.parseFromSlice(gpa, source, .{});
 defer document.deinit();
 ```
 
-The library is incubating: pin a commit, and expect the API to move.
+The API is pre-1.0: pin a version, and expect it to move.
 
 ## What is in it
 
